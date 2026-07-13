@@ -24,6 +24,16 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 8 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M8.1 | **`slaService` reads editable `slaConfig`** instead of constants | Makes SLA admin edits flow through to badges — the "reflects downstream" acceptance. |
+| M8.2 | **Routing rules edit each category's `defaultTeamId`** | Reuses the M4 routing mechanism (no separate rules table/engine); routing admin and taxonomy admin edit different fields of the same category. |
+| M8.3 | **Config writes mutate catalog module state** via `adminService` | Same mock pattern as tickets; changes are visible session-wide (reset on reload, A2). |
+| M8.4 | **`/admin/settings` + `/admin/audit` stay placeholders** | Settings (brand/notif/demo) and a global audit viewer aren't M8 deliverables; audit fits with M9 notifications/reporting. |
+| M8.5 | **Category add + reassign only** (no rename/delete) | Covers "configures taxonomy" with the least surface; destructive/rename ops aren't needed for the acceptance. |
+
 ## Milestone 7 implementation decisions
 
 | # | Decision | Rationale |

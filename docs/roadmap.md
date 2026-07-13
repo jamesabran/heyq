@@ -21,7 +21,7 @@ but do **not** block foundation work.
 | 5 | Agent ticket list & detail workspace ✅ **done** | L | 4 |
 | 6 | Classification, assignment & escalation ✅ **done** | M | 5 |
 | 7 | Knowledge-base administration ✅ **done** | M | 3 |
-| 8 | Agent, team, queue & taxonomy administration | M | 6 |
+| 8 | Agent, team, queue & taxonomy administration ✅ **done** | M | 6 |
 | 9 | Simulated notifications & reporting | M | 6 |
 | 10 | State coverage | S–M | 3–9 |
 | 11 | Light/dark, responsive, a11y & interaction QA | M | 1–10 |
@@ -142,16 +142,23 @@ but do **not** block foundation work.
   `/admin/kb` routes (list / new / :id) with `KbAdminList` + `KbArticleEditor`.
   Category CRUD deferred (taxonomy admin is M8).
 
-## M8 — Agent, team, queue & taxonomy administration (M)
+## M8 — Agent, team, queue & taxonomy administration (M) — ✅ **done**
 
 - **Objective:** Admin surfaces.
 - **Included:** Agent enrollment/roles/tiers/activation, teams/queues, routing
   rules, SLA policies + business hours, concern taxonomy — all simulated config.
 - **Exclusions:** Real identity/permission enforcement.
 - **Dependencies:** M6.
-- **Acceptance:** An admin configures agents, teams, routing, SLA, and taxonomy;
-  changes reflect in downstream mock behavior.
+- **Acceptance:** ✅ An admin configures agents, teams, routing, SLA, and
+  taxonomy; changes reflect downstream (routing → submission team; SLA config →
+  badges — both proven by tests). 8 tests.
 - **Complexity:** M.
+- **As-built notes:** `adminService` writes (agent active/tier, add team, add
+  category/subcategory, set routing team, get/update SLA config); `slaConfig`
+  now drives `slaService`; agents gain `active`. Pages: Agents, Teams, Routing,
+  SLA, Categories. `/admin/settings` + `/admin/audit` remain light placeholders
+  (audit viewer belongs with M9). Category rename/delete deferred (add + reassign
+  cover the acceptance).
 
 ## M9 — Simulated notifications & reporting (M)
 

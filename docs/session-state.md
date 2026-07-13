@@ -7,12 +7,12 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–7 implemented and passing all gates.** A standalone HeyQ app with
+**Milestones 1–8 implemented and passing all gates.** A standalone HeyQ app with
 the QuadX theme + light/dark, full route tree + role gating, the **public help
 center**, **ticket submission + requester portal**, the **agent workspace**,
-**triage** (claim/assign, classification + re-route, L1→L2 escalation), and
-**KB administration** (draft/publish, visibility, revisions). The approved source
-of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+**triage**, **KB administration**, and **admin config** (agents, teams, routing,
+SLA, taxonomy — changes flow downstream). The approved source of truth is
+[`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -124,11 +124,22 @@ of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan
 - **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
   tests **68/68** ✓, build ✓. Browser-verified (admin list).
 
+## Done (Milestone 8)
+
+- `adminService` (agent active/tier, add team, add category/subcategory, set
+  routing team, get/update SLA config). `slaConfig` in catalog now drives
+  `slaService`; agents gain `active`.
+- Pages: Agents, Teams, Routing, SLA, Categories (wired to `/admin/*`).
+- **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
+  tests **76/76** ✓, build ✓. (Browser check skipped — MCP classifier outage;
+  service tests prove routing + SLA config flow downstream.)
+
 ## Next up
 
-**Milestone 8 — Agent, team, queue & taxonomy administration** (see
-[`roadmap.md`](roadmap.md)): agents/roles/tiers/activation, teams/queues, routing
-rules, SLA policies + business hours, concern taxonomy.
+**Milestone 9 — Simulated notifications & reporting** (see
+[`roadmap.md`](roadmap.md)): in-app notification feed + "email sent" markers +
+prefs/dedup; operational dashboard (counters + charts). Likely adds a charts dep
+(Recharts) if justified.
 
 ## Open questions (non-blocking for M1)
 
