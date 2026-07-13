@@ -16,7 +16,7 @@ but do **not** block foundation work.
 |---|---|---|---|
 | 1 | Foundation & QuadX theme ✅ **done** | M | — |
 | 2 | App shell, navigation & simulated roles ✅ **done** | M | 1 |
-| 3 | Public help center & article experience | M | 2 |
+| 3 | Public help center & article experience ✅ **done** | M | 2 |
 | 4 | Ticket submission & requester portal | L | 3 |
 | 5 | Agent ticket list & detail workspace | L | 4 |
 | 6 | Classification, assignment & escalation | M | 5 |
@@ -47,17 +47,22 @@ but do **not** block foundation work.
   `/admin` redirects to `/admin/kb`. Route params surface on the placeholder to
   prove dynamic routing.
 
-## M3 — Public help center & article experience (M)
+## M3 — Public help center & article experience (M) — ✅ **done**
 
 - **Objective:** The KB reading experience for guests.
 - **Included:** Help home (search, featured, categories), category/subcategory
   listing, article view (related, last-updated, breadcrumb), search results;
-  mock KB data via `kbService`.
+  mock KB data via `kbService`. First `useQuery` (thin query wrapper, D10/M2.1).
 - **Exclusions:** KB authoring/publish (M7); ticket intake (M4).
 - **Dependencies:** M2.
-- **Acceptance:** A guest can browse categories, search, and open an article with
-  related links and last-updated shown.
+- **Acceptance:** ✅ A guest browses categories, searches, and opens an article
+  with related links + last-updated. Internal/draft articles never surface
+  publicly. Covered by 14 tests (9 service + 5 page).
 - **Complexity:** M.
+- **As-built notes:** KB types in `models/kb.ts`; seed in `data/kb.ts` (incl. one
+  internal + one draft article to prove filtering); `kbService` filters to
+  published+public in one place; `useQuery` read-only hook (no `useMutation` yet —
+  no writes until M4). Dependency-free `ArticleBody` renderer (`## `/`- `/`**` `).
 
 ## M4 — Ticket submission & requester portal (L)
 

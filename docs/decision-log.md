@@ -24,6 +24,17 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 3 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M3.1 | **`useQuery` implemented; `useMutation` deferred** | M3 is read-only; adding a mutation hook now would be speculative (D18). It lands with the first writes (M4). |
+| M3.2 | **Public visibility filtered inside `kbService`** (published + public only) | Enforces product-rule #5 in one place — internal/draft articles can't leak to any public consumer, incl. search and direct slug access. |
+| M3.3 | **KB `models` + `data` + `service` split; components use the service only** | Product-rule #7 (typed async services, no direct seed access) and the future-API seam. |
+| M3.4 | **Dependency-free `ArticleBody` mini-renderer** (`## ` / `- ` / `**`) | Readable article structure without pulling in a markdown parser (avoid premature dependency). |
+| M3.5 | **Added `excerpt`, `featured`, category `icon`** beyond the doc's abbreviated fields | Needed for cards, the featured row, and the category grid; harmless additive fields. |
+| M3.6 | **~160 ms simulated latency, skipped under test** | Makes loading states visible in the app while keeping the suite fast/deterministic. |
+
 ## Milestone 2 implementation decisions
 
 | # | Decision | Rationale |

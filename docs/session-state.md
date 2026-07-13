@@ -7,10 +7,10 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–2 implemented and passing all gates.** A standalone HeyQ app
-exists with the QuadX theme + light/dark, a full navigable route tree, a
-simulated identity switcher, and role-based nav/route gating. The approved
-source of truth is
+**Milestones 1–3 implemented and passing all gates.** A standalone HeyQ app
+exists with the QuadX theme + light/dark, a full navigable route tree with
+role-based gating, and a working **public help center** (browse, search, read)
+over a typed async `kbService` + `useQuery`. The approved source of truth is
 [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
@@ -51,11 +51,26 @@ source of truth is
 - **Gates green:** tokens ✓, lint ✓ (3 fast-refresh warnings), typecheck ✓,
   tests **15/15** ✓, build ✓. Verified in-browser (live nav gating + guard).
 
+## Done (Milestone 3)
+
+- KB layer: `models/kb.ts`, `data/kb.ts` (13 public + 1 internal + 1 draft
+  article across 6 categories/1 subcategory), `services/kbService.ts`
+  (published+public filtering in one place), `hooks/useQuery.ts` (thin wrapper),
+  `lib/mock.ts` (latency/clone).
+- Help pages: home (search hero, featured, category grid), category listing,
+  article view (breadcrumb, last-updated, body, related), search results — all
+  under `PublicLayout`, reachable by any role.
+- Help components: `ArticleCard`, `CategoryCard`, `HelpSearchBox`, `ArticleBody`,
+  `HelpStates` (loading/empty), plus a `ui/Breadcrumb` primitive.
+- **Gates green:** tokens ✓, lint ✓ (3 fast-refresh warnings), typecheck ✓,
+  tests **29/29** ✓, build ✓. (Browser spot-check deferred — MCP classifier
+  outage during the session; automated tests cover the acceptance criteria.)
+
 ## Next up
 
-**Milestone 3 — Public help center & article experience** (see
-[`roadmap.md`](roadmap.md)). This lands the first `kbService` read, which is
-when the thin query/mutation wrapper (D10/M2.1) gets implemented.
+**Milestone 4 — Ticket submission & requester portal** (see
+[`roadmap.md`](roadmap.md)). Lands the first writes, so `useMutation` joins
+`useQuery` then.
 
 ## Open questions (non-blocking for M1)
 
