@@ -15,7 +15,7 @@ but do **not** block foundation work.
 | # | Milestone | Complexity | Depends on |
 |---|---|---|---|
 | 1 | Foundation & QuadX theme ✅ **done** | M | — |
-| 2 | App shell, navigation & simulated roles | M | 1 |
+| 2 | App shell, navigation & simulated roles ✅ **done** | M | 1 |
 | 3 | Public help center & article experience | M | 2 |
 | 4 | Ticket submission & requester portal | L | 3 |
 | 5 | Agent ticket list & detail workspace | L | 4 |
@@ -29,18 +29,23 @@ but do **not** block foundation work.
 
 ---
 
-## M2 — App shell, navigation & simulated roles (M)
+## M2 — App shell, navigation & simulated roles (M) — ✅ **done**
 
 - **Objective:** A navigable shell whose visible nav/views change by simulated role.
-- **Included:** Full route tree (§4/[IA](information-architecture.md)); app +
-  admin layouts; simulated identity switcher (role/tier/team) extending the
-  `AuthContext` demo-user pattern; role-based nav gating helpers; the
-  query/mutation hook decision (adopt a lib or thin wrapper).
+- **Included:** Full route tree (§4/[IA](information-architecture.md)); public +
+  authenticated (`/app`, `/admin`) layouts; simulated identity switcher
+  (7 role/tier/team demo identities, persisted); role-based nav gating +
+  `RequireRole` route guards driven by shared role groupings.
 - **Exclusions:** No help-center/ticket/admin *content* screens (placeholders only).
 - **Dependencies:** M1.
-- **Acceptance:** Every area is reachable; switching role changes visible nav,
-  views, and actions per the role matrix.
+- **Acceptance:** ✅ Every area reachable; switching identity changes visible nav
+  and gated routes per the role matrix. Verified in-browser + 15 tests.
 - **Complexity:** M.
+- **As-built notes:** Query/mutation layer **deferred** — resolves D10 by decision
+  (thin in-house wrapper) but not implemented, since M2 has no data reads (built
+  in M3 when the first `kbService` read lands). `/` and `/*` redirect to `/app`;
+  `/admin` redirects to `/admin/kb`. Route params surface on the placeholder to
+  prove dynamic routing.
 
 ## M3 — Public help center & article experience (M)
 

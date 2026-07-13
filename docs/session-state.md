@@ -7,9 +7,10 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestone 1 implemented and passing all gates.** The planning set is complete
-and a standalone HeyQ application now exists (shell + QuadX theme + light/dark +
-validation page). The approved source of truth is
+**Milestones 1–2 implemented and passing all gates.** A standalone HeyQ app
+exists with the QuadX theme + light/dark, a full navigable route tree, a
+simulated identity switcher, and role-based nav/route gating. The approved
+source of truth is
 [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
@@ -38,10 +39,23 @@ validation page). The approved source of truth is
 - **Gates green:** tokens ✓, lint ✓ (2 fast-refresh warnings), typecheck ✓,
   tests 9/9 ✓, build ✓. Verified in-browser (dark via OS pref, no console errors).
 
+## Done (Milestone 2)
+
+- Full route tree (public `/help`, `/contact`, `/t/:token`; agent `/app/*`;
+  admin `/admin/*`) with public + authenticated (`AppLayout`) shells.
+- `IdentityContext` — 7 persisted demo identities (guest → admin, agents carry
+  tier/team); native-`<select>` `IdentitySwitcher` in the header.
+- `config/navigation.ts` + `lib/roles.ts` role groupings drive role-aware
+  sidebar sections **and** `RequireRole` route guards from one source.
+- Reusable `PlaceholderPage` (surfaces route params); removed M1 `Overview`.
+- **Gates green:** tokens ✓, lint ✓ (3 fast-refresh warnings), typecheck ✓,
+  tests **15/15** ✓, build ✓. Verified in-browser (live nav gating + guard).
+
 ## Next up
 
-**Milestone 2 — App shell, navigation & simulated roles** (see
-[`roadmap.md`](roadmap.md)). Not started; out of scope for this session.
+**Milestone 3 — Public help center & article experience** (see
+[`roadmap.md`](roadmap.md)). This lands the first `kbService` read, which is
+when the thin query/mutation wrapper (D10/M2.1) gets implemented.
 
 ## Open questions (non-blocking for M1)
 
@@ -53,7 +67,7 @@ validation page). The approved source of truth is
 | A6 | QuadX red brand value (must differ from `destructive`) | **Provisional `#E11900`** in use (scalar, reversible); distinct from `#d4183d`; confirm final value + full WCAG AA audit | Brand/Design |
 | — | Simulated identity model | Role/tier/team demo set for the switcher | Product/Design |
 | A8 | Reporting depth | Operational counters + a few charts, not analytics | Support Ops |
-| D10 | Query/mutation layer: library vs thin in-house wrapper | Decide in M2 when first real reads land | Frontend |
+| D10 | Query/mutation layer: library vs thin in-house wrapper | **Resolved** (M2.1): thin in-house wrapper; implemented in M3 with first reads | Frontend |
 
 These shape seed data/theming but **do not block foundation work** (M1).
 

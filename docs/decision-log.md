@@ -24,6 +24,17 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 2 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M2.1 | **D10 resolved: thin in-house query/mutation wrapper** (not a library), **implemented later** | M2 renders placeholders with no data reads; building a query layer now would be speculative (D18). Decision recorded; implementation lands in M3 with the first `kbService` read. |
+| M2.2 | **Single nav config (`config/navigation.ts`) + shared role groupings (`lib/roles.ts`)** drive both sidebar visibility and `RequireRole` route guards | One source of truth so nav and access can't drift. |
+| M2.3 | **`RequireRole` renders an "access restricted" placeholder, not a redirect** | Keeps every area reachable by switching identity — better for a demo/review flow than bouncing the URL. |
+| M2.4 | **Native `<select>` identity switcher** | Fully accessible with minimal code; avoids adding a popover/menu dependency for a dev-only control. |
+| M2.5 | **`routes.tsx` exports a `RouteObject[]`; browser router built in `main.tsx`** | Lets tests drive the real tree via `createMemoryRouter`. |
+| M2.6 | **`/`, `/*` → `/app`; `/admin` → `/admin/kb`** | Sensible defaults; admin's landing is the KB area both KB editors and admins share. |
+
 ## Milestone 1 implementation decisions
 
 | # | Decision | Rationale |
