@@ -1,0 +1,19 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea
+*.log
+npm-debug.log*
+
+# Test / build artifacts
+coverage
+*.tsbuildinfo
+
+# Local, user-specific Claude settings (keep launch.json shared)
+.claude/settings.local.json

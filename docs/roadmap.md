@@ -1,0 +1,338 @@
+# Roadmap
+
+Twelve frontend-first milestones. Sizing S/M/L is **relative effort**, not
+calendar time. Only **Milestone 1** has a detailed implementation plan (below);
+the rest are concise, implementation-sized entries. Derived from §13.
+
+Milestones 1–3 can begin immediately. Taxonomy, SLA placeholder targets, and the
+QuadX red value (see [`session-state.md`](session-state.md)) feed milestones 3–9
+but do **not** block foundation work.
+
+---
+
+## Milestone summary
+
+| # | Milestone | Complexity | Depends on |
+|---|---|---|---|
+| 1 | Foundation & QuadX theme ✅ **done** | M | — |
+| 2 | App shell, navigation & simulated roles | M | 1 |
+| 3 | Public help center & article experience | M | 2 |
+| 4 | Ticket submission & requester portal | L | 3 |
+| 5 | Agent ticket list & detail workspace | L | 4 |
+| 6 | Classification, assignment & escalation | M | 5 |
+| 7 | Knowledge-base administration | M | 3 |
+| 8 | Agent, team, queue & taxonomy administration | M | 6 |
+| 9 | Simulated notifications & reporting | M | 6 |
+| 10 | State coverage | S–M | 3–9 |
+| 11 | Light/dark, responsive, a11y & interaction QA | M | 1–10 |
+| 12 | Frontend approval & backend-readiness assessment | S | 1–11 |
+
+---
+
+## M2 — App shell, navigation & simulated roles (M)
+
+- **Objective:** A navigable shell whose visible nav/views change by simulated role.
+- **Included:** Full route tree (§4/[IA](information-architecture.md)); app +
+  admin layouts; simulated identity switcher (role/tier/team) extending the
+  `AuthContext` demo-user pattern; role-based nav gating helpers; the
+  query/mutation hook decision (adopt a lib or thin wrapper).
+- **Exclusions:** No help-center/ticket/admin *content* screens (placeholders only).
+- **Dependencies:** M1.
+- **Acceptance:** Every area is reachable; switching role changes visible nav,
+  views, and actions per the role matrix.
+- **Complexity:** M.
+
+## M3 — Public help center & article experience (M)
+
+- **Objective:** The KB reading experience for guests.
+- **Included:** Help home (search, featured, categories), category/subcategory
+  listing, article view (related, last-updated, breadcrumb), search results;
+  mock KB data via `kbService`.
+- **Exclusions:** KB authoring/publish (M7); ticket intake (M4).
+- **Dependencies:** M2.
+- **Acceptance:** A guest can browse categories, search, and open an article with
+  related links and last-updated shown.
+- **Complexity:** M.
+
+## M4 — Ticket submission & requester portal (L)
+
+- **Objective:** Intake + requester tracking end-to-end.
+- **Included:** Progressive web form (concern drives conditional fields);
+  simulated transaction-prefill (read-only known fields); reference +
+  confirmation; requester portal at `/t/:token` (status, thread, reply, reopen);
+  `requesterService` token resolution.
+- **Exclusions:** Real tokens/auth; agent-side workspace (M5).
+- **Dependencies:** M3.
+- **Acceptance:** A guest submits and tracks a ticket end-to-end; the ticket lands
+  in the correct team's unassigned queue; the portal opens only via token, never
+  by reference alone.
+- **Complexity:** L.
+
+## M5 — Agent ticket list & detail workspace (L)
+
+- **Objective:** The core agent surface.
+- **Included:** Queues (mine/team/unassigned/escalated/SLA), filters/sort, 3-pane
+  detail (context | conversation | actions), public reply, internal note,
+  resolve; ticket timeline; simulated SLA states + simulated clock; audit events.
+- **Exclusions:** Assignment/escalation *controls* (M6); admin config (M8).
+- **Dependencies:** M4.
+- **Acceptance:** An agent works a ticket to resolution; internal notes are
+  visibly distinct and never appear in the portal; SLA badges reflect the clock.
+- **Complexity:** L.
+
+## M6 — Classification, assignment & escalation (M)
+
+- **Objective:** Triage interactions.
+- **Included:** Classification controls; rules→team routing (`routingService`);
+  manual claim/reassign; **L1→L2 escalation** with mandatory reason + note and
+  escalation history — as a separate `escalationState`/tier/team/owner change,
+  **not a status change**.
+- **Exclusions:** Round-robin/workload routing (deferred).
+- **Dependencies:** M5.
+- **Acceptance:** A ticket auto-routes, is assignable, and escalates with history;
+  the Escalated view filters by escalation state/history, not status; workflow
+  status may remain `In Progress` through escalation.
+- **Complexity:** M.
+
+## M7 — Knowledge-base administration (M)
+
+- **Objective:** KB authoring.
+- **Included:** Article list, draft/publish, categories, ordering, revisions,
+  public/internal visibility.
+- **Exclusions:** Public reading UI (M3).
+- **Dependencies:** M3.
+- **Acceptance:** An editor drafts, revises, sets visibility, and publishes; the
+  article appears publicly; internal-only articles never appear publicly.
+- **Complexity:** M.
+
+## M8 — Agent, team, queue & taxonomy administration (M)
+
+- **Objective:** Admin surfaces.
+- **Included:** Agent enrollment/roles/tiers/activation, teams/queues, routing
+  rules, SLA policies + business hours, concern taxonomy — all simulated config.
+- **Exclusions:** Real identity/permission enforcement.
+- **Dependencies:** M6.
+- **Acceptance:** An admin configures agents, teams, routing, SLA, and taxonomy;
+  changes reflect in downstream mock behavior.
+- **Complexity:** M.
+
+## M9 — Simulated notifications & reporting (M)
+
+- **Objective:** Feedback + operational visibility.
+- **Included:** In-app notification feed + "email sent" markers + prefs/dedup
+  (`notificationService`); operational dashboard — counters + simple Recharts
+  charts (`reportsService`).
+- **Exclusions:** Analytics platform; real delivery.
+- **Dependencies:** M6.
+- **Acceptance:** Core events produce one in-app notification (and an "email sent"
+  marker where applicable); the dashboard reflects the mock dataset.
+- **Complexity:** M.
+
+## M10 — State coverage (S–M)
+
+- **Objective:** Robust empty/loading/success/error/validation states.
+- **Included:** Every list/detail/form gets defined states across the app.
+- **Exclusions:** New features.
+- **Dependencies:** M3–M9.
+- **Acceptance:** Every screen has defined states.
+- **Complexity:** S–M.
+
+## M11 — Light/dark, responsive, accessibility & interaction QA (M)
+
+- **Objective:** Polish & QA.
+- **Included:** Dual-mode audit, responsive breakpoints, keyboard/focus/
+  screen-reader passes, per-role review pass, interaction QA.
+- **Exclusions:** New features.
+- **Dependencies:** M1–M10.
+- **Acceptance:** Passes a11y + responsive + dual-mode + per-role review.
+- **Complexity:** M.
+
+## M12 — Frontend approval & backend-readiness assessment (S)
+
+- **Objective:** Gate to backend planning.
+- **Included:** Stakeholder review; document the API contracts/seams; backend
+  productionization readiness note (technology still unselected).
+- **Exclusions:** Any backend build.
+- **Dependencies:** M1–M11.
+- **Acceptance:** Sign-off to proceed to backend planning.
+- **Complexity:** S.
+
+---
+
+# Milestone 1 — Foundation & QuadX Theme (detailed plan)
+
+> **Status: ✅ Implemented** (committed locally). All gates pass: `tokens`,
+> `lint`, `typecheck`, `test` (9/9), `build`. Verified in-browser. As-built notes
+> are inline below; deviations from the original plan are recorded in
+> [`decision-log.md`](decision-log.md) (M1.1–M1.6).
+
+**Objective.** Stand up a GGX-Corporate-style project that builds, type-checks,
+lints, and renders a **themed, responsive application shell** in **light and
+dark** with **QuadX red** as the brand color — plus a small validation page —
+so every later milestone builds on a proven foundation.
+
+**Exclusions (do not build in M1).** No help-center, ticket, agent, requester,
+reporting, or admin *screens*. No helpdesk molecules, no mock domain services,
+no full route tree. Only the shell, theme, and a validation page.
+
+**Dependencies.** None. Requires read access to `../GGX Corporate` for component
+and token reuse. The exact QuadX red hex (A6) is a placeholder and does not block.
+
+## 1. Project setup (GGX-Corporate-based)
+
+Mirror the verified GGX Corporate toolchain — do not invent a new stack:
+
+- **Vite 6** + `@vitejs/plugin-react`, **React 18.3**, **React Router 7**,
+  **TypeScript 5.6**, **Tailwind v4** via `@tailwindcss/vite`.
+- Config parity with GGX: `vite.config.ts`, `tsconfig*.json` (`tsc -b`),
+  `index.html`, `package.json` scripts (`dev`, `build`, `typecheck`, `tokens`).
+- Copy `cn()` (`lib/utils.ts`) and the `class-variance-authority` + `clsx` +
+  `tailwind-merge` convention.
+
+## 2. Proposed folder structure
+
+Mirror GGX `src/app`:
+
+```
+HeyQ/
+  index.html
+  package.json  vite.config.ts  tsconfig*.json
+  tokens/
+    tokens.json                 # GGX tokens + QuadX brand + dark set
+  scripts/
+    build-tokens.mjs            # extended to emit .dark block
+  src/
+    main.tsx
+    styles/
+      theme.css                 # GENERATED — do not hand-edit
+    app/
+      App.tsx
+      routes.tsx                # shell + /_'validation' route only in M1
+      components/
+        ui/                     # vendored GGX SHADCN primitives (minimum set)
+        layout/                 # AppShell, Header, Sidebar
+      contexts/
+        ThemeContext.tsx        # NEW — toggles .dark on <html>
+      lib/
+        utils.ts                # cn()
+      pages/
+        Validation.tsx          # theme/component validation page
+```
+
+`components/helpdesk/`, `services/`, `data/`, `hooks/` directories are created
+empty or deferred to the milestones that need them — **no abstractions built
+only for future use**.
+
+## 3. Initial GGX SHADCN components to reuse
+
+Vendor only what the shell + validation page need:
+**Button, Card, Badge, Alert, Input, Field, Select, Tabs, Tooltip, Separator,
+Avatar, PageHeader** (+ `Breadcrumb` if the shell uses it). Keep `cn()`/CVA
+conventions intact. The remaining ~18 components come in later milestones.
+
+## 4. Token pipeline reuse + QuadX red + dark mode
+
+This is the substantive M1 work (see
+[`design-system-strategy.md`](design-system-strategy.md)):
+
+1. **Copy** `tokens/tokens.json` and `scripts/build-tokens.mjs` from GGX.
+2. **QuadX brand layer:** override `--primary`, `--primary-foreground`, `--ring`
+   (and focus) to a **QuadX red** placeholder in `tokens.json`. Keep
+   `--destructive` unchanged (danger only).
+3. **Separate brand red from destructive red:** choose a QuadX red value
+   **visibly distinct** from `--destructive` (`#d4183d`); document both together
+   and validate WCAG AA contrast in light and dark.
+4. **Dark mode:** add a **dark color set** to `tokens.json` and **extend
+   `build-tokens.mjs`** to emit a `.dark { … }` block alongside `:root`
+   (`@custom-variant dark` is already declared). Regenerate `theme.css`.
+5. **Theme toggle:** add a minimal `ThemeContext` that toggles the `.dark` class
+   on `<html>`, persists the choice, and respects `prefers-color-scheme` on
+   first load. No library.
+
+## 5. Minimal responsive application shell
+
+- **Header:** brand mark, theme toggle, and a **disabled GGX brand control**
+  (locked chip: "GGX" active + "More brands coming soon"). Placeholder slots for
+  search / notifications / identity switcher (wired in M2, not M1).
+- **Sidebar:** static placeholder nav (structure only; role gating is M2).
+- **Content:** placeholder region using the `PageHeader` pattern.
+- **Responsive:** shell collapses sidebar at tablet width; header stays usable at
+  mobile width.
+
+## 6. Theme / component validation page
+
+A single `/` (or `/_validate`) page that renders the vendored primitives in a
+gallery: buttons (primary = QuadX red), badges, alerts (including a
+**destructive** example next to a **brand** example to prove they are distinct),
+inputs/fields, tabs, tooltip, card. Serves as the manual light/dark and
+brand-vs-danger check surface.
+
+## 7. Quality gates (minimum)
+
+- **Lint:** minimal ESLint + TypeScript config (add if not carried from GGX).
+- **Type-check:** `tsc -b --noEmit` clean.
+- **Build:** `vite build` succeeds.
+- **Tokens:** `npm run tokens` regenerates `theme.css` deterministically.
+- **Accessibility (minimum):** keyboard-reachable controls, visible focus, toggle
+  has an accessible label; contrast validated on primary surfaces in both modes.
+- **Interaction (minimum):** theme toggle switches modes; disabled brand control
+  is non-interactive. Add a **minimal test setup** (e.g. Vitest + Testing
+  Library) with 1–2 smoke tests (shell renders; toggle flips `.dark`). GGX ships
+  no test runner, so this is a justified new dev dependency.
+
+## 8. Likely files to create or modify
+
+- `package.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.app.json`,
+  `tsconfig.node.json`, `index.html`, `.eslintrc`/eslint config
+- `tokens/tokens.json` (QuadX brand + dark set)
+- `scripts/build-tokens.mjs` (emit `.dark` block)
+- `src/styles/theme.css` (generated)
+- `src/main.tsx`, `src/app/App.tsx`, `src/app/routes.tsx`
+- `src/app/contexts/ThemeContext.tsx`
+- `src/app/components/ui/*` (vendored minimum set)
+- `src/app/components/layout/{AppShell,Header,Sidebar}.tsx`
+- `src/app/lib/utils.ts`
+- `src/app/pages/Validation.tsx`
+- 1–2 smoke test files + test config
+
+## 9. Step-by-step implementation sequence
+
+1. Scaffold the Vite/React/TS/Tailwind-v4 project matching GGX config; verify
+   `dev`/`build`/`typecheck` on an empty app.
+2. Copy `tokens.json` + `build-tokens.mjs`; run `npm run tokens`; confirm
+   `theme.css` regenerates (light-only baseline).
+3. Extend `tokens.json` with the **dark set** and **QuadX red brand layer**;
+   extend `build-tokens.mjs` to emit `.dark`; regenerate; verify variables.
+4. Vendor the minimum GGX SHADCN component set + `cn()`.
+5. Add `ThemeContext` + theme toggle (`.dark` on `<html>`, persisted).
+6. Build the responsive shell (Header + disabled brand control, Sidebar,
+   Content).
+7. Build the validation page (gallery incl. brand-vs-destructive proof).
+8. Add lint config + minimal test setup; write the 1–2 smoke tests.
+9. Run all gates (lint, type-check, build, tokens, tests); validate light/dark +
+   contrast manually.
+
+## 10. Acceptance criteria
+
+- `dev`, `build`, `typecheck`, `tokens`, `lint`, and the smoke tests all pass.
+- The themed shell renders in **light and dark**; the theme toggle switches modes
+  and persists.
+- **Primary color is QuadX red** and is **visibly distinct from `destructive`**;
+  contrast meets WCAG AA on primary surfaces in both modes.
+- The **disabled GGX brand control** renders and is non-interactive.
+- The shell is usable at mobile (header) and tablet (collapsed sidebar) widths.
+- No help-center/ticket/agent/requester/reporting/admin screens exist yet.
+
+## 11. Recommended frontend dependencies for M1 (install later, not now)
+
+Only when justified; all frontend-only:
+
+- **Vitest + @testing-library/react + jsdom** — minimum test setup GGX lacks
+  (justified: interaction/smoke checks).
+- **ESLint + typescript-eslint** (+ config) — if not carried from GGX.
+- Everything else (icons via `@tabler/icons-react`, `recharts`, router, CVA
+  stack) is **already part of the GGX baseline** being copied — no new choice.
+
+Query/mutation abstraction, accessibility-audit helpers, and interaction
+libraries are **deferred to the milestone that first needs them** (M2+), per the
+"no abstractions for hypothetical future use" rule.
