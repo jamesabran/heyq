@@ -8,6 +8,8 @@ import { HelpHome } from './pages/help/HelpHome';
 import { HelpCategory } from './pages/help/HelpCategory';
 import { HelpArticle } from './pages/help/HelpArticle';
 import { HelpSearch } from './pages/help/HelpSearch';
+import { ContactPage } from './pages/ContactPage';
+import { RequesterPortal } from './pages/RequesterPortal';
 import { RequireRole } from './components/RequireRole';
 import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from './lib/roles';
 
@@ -31,8 +33,8 @@ export const routes: RouteObject[] = [
       { path: 'help/search', element: <HelpSearch /> },
       { path: 'help/c/:category', element: <HelpCategory /> },
       { path: 'help/a/:slug', element: <HelpArticle /> },
-      { path: 'contact', element: ph('Submit a Ticket', 'Public ticket submission form.', 'M4') },
-      { path: 't/:token', element: ph('Requester Portal', 'Simulated secure-link ticket portal.', 'M4') },
+      { path: 'contact', element: <ContactPage /> },
+      { path: 't/:token', element: <RequesterPortal /> },
       { path: 'validation', element: <Validation /> },
     ],
   },
