@@ -91,8 +91,10 @@ describe('route guards', () => {
     expect(screen.getByText('Placeholder')).toBeInTheDocument();
   });
 
-  it('surfaces route params on dynamic routes', () => {
-    renderApp('/app/tickets/T-1042', 'admin');
-    expect(screen.getByText(/id: T-1042/i)).toBeInTheDocument();
+  it('resolves the :id param on the dynamic ticket route', async () => {
+    renderApp('/app/tickets/tkt-seed-1', 'admin');
+    // The detail page loads the ticket named by the route param.
+    expect(await screen.findByRole('heading', { name: /where is my parcel/i })).toBeInTheDocument();
+    expect(screen.getAllByText('HQ-2026-0001').length).toBeGreaterThan(0);
   });
 });

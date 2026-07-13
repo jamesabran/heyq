@@ -10,6 +10,16 @@ import { HelpArticle } from './pages/help/HelpArticle';
 import { HelpSearch } from './pages/help/HelpSearch';
 import { ContactPage } from './pages/ContactPage';
 import { RequesterPortal } from './pages/RequesterPortal';
+import {
+  AgentSearch,
+  EscalatedQueue,
+  MyQueue,
+  SavedViews,
+  SlaQueue,
+  TeamTickets,
+  UnassignedQueue,
+} from './pages/app/queues';
+import { TicketDetail } from './pages/app/TicketDetail';
 import { RequireRole } from './components/RequireRole';
 import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from './lib/roles';
 
@@ -42,14 +52,14 @@ export const routes: RouteObject[] = [
     path: '/app',
     element: <AppLayout />,
     children: [
-      { index: true, element: guard(AGENT_ROLES, ph('My Queue', 'Tickets assigned to me.', 'M5')) },
-      { path: 'team', element: guard(AGENT_ROLES, ph('Team Tickets', 'Tickets for my team / queue.', 'M5')) },
-      { path: 'unassigned', element: guard(AGENT_ROLES, ph('Unassigned', 'The unassigned pool.', 'M5')) },
-      { path: 'escalated', element: guard(AGENT_ROLES, ph('Escalated Tickets', 'Filtered by escalation state / history.', 'M6')) },
-      { path: 'sla', element: guard(AGENT_ROLES, ph('SLA At-Risk', 'At-risk and breached tickets.', 'M5')) },
-      { path: 'tickets/:id', element: guard(AGENT_ROLES, ph('Ticket Detail', '3-pane ticket workspace.', 'M5')) },
-      { path: 'search', element: guard(AGENT_ROLES, ph('Search', 'Global ticket search & filters.', 'M5')) },
-      { path: 'views', element: guard(AGENT_ROLES, ph('Saved Views', 'Saved ticket views.', 'M5')) },
+      { index: true, element: guard(AGENT_ROLES, <MyQueue />) },
+      { path: 'team', element: guard(AGENT_ROLES, <TeamTickets />) },
+      { path: 'unassigned', element: guard(AGENT_ROLES, <UnassignedQueue />) },
+      { path: 'escalated', element: guard(AGENT_ROLES, <EscalatedQueue />) },
+      { path: 'sla', element: guard(AGENT_ROLES, <SlaQueue />) },
+      { path: 'tickets/:id', element: guard(AGENT_ROLES, <TicketDetail />) },
+      { path: 'search', element: guard(AGENT_ROLES, <AgentSearch />) },
+      { path: 'views', element: guard(AGENT_ROLES, <SavedViews />) },
       { path: 'supervisor', element: guard(LEAD_ROLES, ph('Team Dashboard', 'Workload and SLA compliance.', 'M9')) },
       { path: 'reports', element: guard(LEAD_ROLES, ph('Reports', 'Operational reports.', 'M9')) },
     ],
