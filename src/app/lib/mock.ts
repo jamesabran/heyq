@@ -15,3 +15,17 @@ export function simulateLatency(ms: number = DEFAULT_LATENCY_MS): Promise<void> 
 export function clone<T>(value: T): T {
   return structuredClone(value);
 }
+
+/** Generate an opaque id/token with a readable prefix. */
+export function makeId(prefix: string): string {
+  const rand =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+      : Math.random().toString(36).slice(2, 14);
+  return `${prefix}_${rand}`;
+}
+
+/** Current ISO timestamp (single call site so it's easy to stub later). */
+export function nowIso(): string {
+  return new Date().toISOString();
+}
