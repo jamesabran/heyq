@@ -7,11 +7,12 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–4 implemented and passing all gates.** A standalone HeyQ app with
+**Milestones 1–5 implemented and passing all gates.** A standalone HeyQ app with
 the QuadX theme + light/dark, full route tree + role gating, the **public help
-center**, and **ticket submission + requester portal** (create, track, reply,
-reopen) over typed async services + `useQuery`/`useMutation`. The approved source
-of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+center**, **ticket submission + requester portal**, and the **agent workspace**
+(queues, 3-pane detail, reply, internal notes, resolve, SLA badges, timeline) —
+over typed async services + `useQuery`/`useMutation`. The approved source of truth
+is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -81,11 +82,28 @@ of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan
 - **Gates green:** tokens ✓, lint ✓ (3 fast-refresh warnings), typecheck ✓,
   tests **41/41** ✓, build ✓. Browser-verified (portal + transaction prefill).
 
+## Done (Milestone 5)
+
+- `InternalNote` type + SLA types + view models (`TicketListItem`,
+  `TicketDetailView`, `TimelineEvent`). `lib/clock.ts` (fixed simulated now),
+  `slaService` (compute + at-risk/breached).
+- Expanded ticket seed (8 tickets across queues + SLA states, internal notes,
+  status events, agents in catalog). Agent-facing `ticketService` functions
+  (`listTickets`, `getTicketDetail`, `addAgentReply`, `addInternalNote`,
+  `resolveTicket`).
+- Pages: shared `AgentQueuePage` + My Queue / Team / Unassigned / Escalated /
+  SLA / Search / Saved Views; 3-pane `TicketDetail`.
+- Components: `TicketTable`, `AgentConversation` (notes badged/tinted),
+  `TicketComposer` (reply/note toggle), `badges` (SLA/priority).
+- **Gates green:** tokens ✓, lint ✓ (4 fast-refresh warnings), typecheck ✓,
+  tests **52/52** ✓, build ✓. Browser-verified (3-pane detail; internal note
+  present in agent view, absent in portal).
+
 ## Next up
 
-**Milestone 5 — Agent ticket list & detail workspace** (see
-[`roadmap.md`](roadmap.md)): queues, 3-pane detail, reply, internal notes,
-timeline, SLA states. Introduces `InternalNote` (never shown to requesters).
+**Milestone 6 — Classification, assignment & escalation** (see
+[`roadmap.md`](roadmap.md)): classification controls, rules→team routing, manual
+claim/reassign, L1→L2 escalation (separate state/tier/team + history).
 
 ## Open questions (non-blocking for M1)
 

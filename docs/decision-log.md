@@ -24,6 +24,18 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 5 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M5.1 | **Fixed simulated clock** (`lib/clock.ts`, anchored 2026-07-14) | SLA states must be deterministic regardless of real wall-clock; advanceable-clock demos deferred (docs/sla-simulation.md). |
+| M5.2 | **Simplified SLA** (targets 4h/48h, wall-clock elapsed, pause on Pending Requester) | Enough for badges now; business-hours accuracy + per-priority policies are M8. Marked provisional. |
+| M5.3 | **`InternalNote` is a distinct entity**; `listMessages`/portal expose only `TicketMessage` | Structurally prevents notes leaking to requesters (product rule #5) — verified in agent view vs portal. |
+| M5.4 | **Queues scoped by identity** (`viewerId`/`viewerTeamId`); admin (no team) sees all | Matches the role matrix without a permissions engine. Aligned identity `teamId`s to catalog team ids. |
+| M5.5 | **Escalated queue filters on escalation state, not status** | Product rule #2; the seeded escalated ticket stays `in_progress`. |
+| M5.6 | **Reply/note/resolve now; assign/escalate/classify deferred to M6** | Keeps M5 to the core work-a-ticket loop; right pane notes where M6 controls land. |
+| M5.7 | **Shared `AgentQueuePage` + thin wrappers; view models composed in the service** | Avoids duplicated list pages; components stay presentational. |
+
 ## Milestone 4 implementation decisions
 
 | # | Decision | Rationale |

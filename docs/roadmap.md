@@ -18,7 +18,7 @@ but do **not** block foundation work.
 | 2 | App shell, navigation & simulated roles ✅ **done** | M | 1 |
 | 3 | Public help center & article experience ✅ **done** | M | 2 |
 | 4 | Ticket submission & requester portal ✅ **done** | L | 3 |
-| 5 | Agent ticket list & detail workspace | L | 4 |
+| 5 | Agent ticket list & detail workspace ✅ **done** | L | 4 |
 | 6 | Classification, assignment & escalation | M | 5 |
 | 7 | Knowledge-base administration | M | 3 |
 | 8 | Agent, team, queue & taxonomy administration | M | 6 |
@@ -85,7 +85,7 @@ but do **not** block foundation work.
   M6). Reply moves Pending Requester→In Progress and Resolved→Reopened. Attachments
   are metadata-only (no upload). Added `ui/Select`, `ui/Textarea`.
 
-## M5 — Agent ticket list & detail workspace (L)
+## M5 — Agent ticket list & detail workspace (L) — ✅ **done**
 
 - **Objective:** The core agent surface.
 - **Included:** Queues (mine/team/unassigned/escalated/SLA), filters/sort, 3-pane
@@ -93,9 +93,17 @@ but do **not** block foundation work.
   resolve; ticket timeline; simulated SLA states + simulated clock; audit events.
 - **Exclusions:** Assignment/escalation *controls* (M6); admin config (M8).
 - **Dependencies:** M4.
-- **Acceptance:** An agent works a ticket to resolution; internal notes are
-  visibly distinct and never appear in the portal; SLA badges reflect the clock.
+- **Acceptance:** ✅ An agent works a ticket to resolution; internal notes are
+  visibly distinct and never appear in the portal (browser-verified); SLA badges
+  reflect the simulated clock. 11 tests + browser check.
 - **Complexity:** L.
+- **As-built notes:** `InternalNote` type + `slaService` (targets 4h/48h vs a
+  fixed simulated clock, resolution pauses on Pending Requester) + `lib/clock.ts`.
+  Expanded ticket seed (8 tickets across queues/SLA states, internal notes,
+  status events). Queues share `AgentQueuePage` scoped by identity; 3-pane
+  `TicketDetail`; `TicketTable`, `AgentConversation`, `TicketComposer`, badges.
+  Aligned identity `teamId`s to catalog team ids. SLA business-hours accuracy and
+  policy config deferred to M8.
 
 ## M6 — Classification, assignment & escalation (M)
 
