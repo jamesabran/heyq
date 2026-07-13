@@ -20,6 +20,8 @@ import {
   UnassignedQueue,
 } from './pages/app/queues';
 import { TicketDetail } from './pages/app/TicketDetail';
+import { KbAdminList } from './pages/admin/KbAdminList';
+import { KbArticleEditor } from './pages/admin/KbArticleEditor';
 import { RequireRole } from './components/RequireRole';
 import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from './lib/roles';
 
@@ -69,7 +71,14 @@ export const routes: RouteObject[] = [
     element: <AppLayout />,
     children: [
       { index: true, element: <Navigate to="/admin/kb" replace /> },
-      { path: 'kb', element: guard(KB_ROLES, ph('Manage Articles', 'Draft, revise, and publish KB articles.', 'M7')) },
+      {
+        path: 'kb',
+        children: [
+          { index: true, element: guard(KB_ROLES, <KbAdminList />) },
+          { path: 'new', element: guard(KB_ROLES, <KbArticleEditor />) },
+          { path: ':id', element: guard(KB_ROLES, <KbArticleEditor />) },
+        ],
+      },
       { path: 'agents', element: guard(ADMIN_ROLES, ph('Agents', 'Agent enrollment, roles, tiers, activation.', 'M8')) },
       { path: 'teams', element: guard(ADMIN_ROLES, ph('Teams & Queues', 'Teams and queues.', 'M8')) },
       { path: 'routing', element: guard(ADMIN_ROLES, ph('Routing Rules', 'Concern → team / tier routing.', 'M8')) },
