@@ -87,8 +87,7 @@ describe('route guards', () => {
 
   it('allows an admin into the admin area', () => {
     renderApp('/admin/agents', 'admin');
-    expect(screen.getByRole('heading', { name: /agents/i })).toBeInTheDocument();
-    expect(screen.getByText('Placeholder')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument();
   });
 
   it('resolves the :id param on the dynamic ticket route', async () => {

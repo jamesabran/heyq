@@ -22,6 +22,11 @@ import {
 import { TicketDetail } from './pages/app/TicketDetail';
 import { KbAdminList } from './pages/admin/KbAdminList';
 import { KbArticleEditor } from './pages/admin/KbArticleEditor';
+import { AgentsAdmin } from './pages/admin/AgentsAdmin';
+import { TeamsAdmin } from './pages/admin/TeamsAdmin';
+import { RoutingAdmin } from './pages/admin/RoutingAdmin';
+import { SlaAdmin } from './pages/admin/SlaAdmin';
+import { CategoriesAdmin } from './pages/admin/CategoriesAdmin';
 import { RequireRole } from './components/RequireRole';
 import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from './lib/roles';
 
@@ -79,11 +84,11 @@ export const routes: RouteObject[] = [
           { path: ':id', element: guard(KB_ROLES, <KbArticleEditor />) },
         ],
       },
-      { path: 'agents', element: guard(ADMIN_ROLES, ph('Agents', 'Agent enrollment, roles, tiers, activation.', 'M8')) },
-      { path: 'teams', element: guard(ADMIN_ROLES, ph('Teams & Queues', 'Teams and queues.', 'M8')) },
-      { path: 'routing', element: guard(ADMIN_ROLES, ph('Routing Rules', 'Concern → team / tier routing.', 'M8')) },
-      { path: 'sla', element: guard(ADMIN_ROLES, ph('SLA Policies', 'SLA policies and business hours.', 'M8')) },
-      { path: 'categories', element: guard(ADMIN_ROLES, ph('Categories', 'Concern taxonomy management.', 'M8')) },
+      { path: 'agents', element: guard(ADMIN_ROLES, <AgentsAdmin />) },
+      { path: 'teams', element: guard(ADMIN_ROLES, <TeamsAdmin />) },
+      { path: 'routing', element: guard(ADMIN_ROLES, <RoutingAdmin />) },
+      { path: 'sla', element: guard(ADMIN_ROLES, <SlaAdmin />) },
+      { path: 'categories', element: guard(ADMIN_ROLES, <CategoriesAdmin />) },
       { path: 'settings', element: guard(ADMIN_ROLES, ph('Settings', 'Brand, notification prefs, demo settings.', 'M8')) },
       { path: 'audit', element: guard(AUDIT_ROLES, ph('Audit Log', 'Simulated activity / audit log.', 'M8')) },
     ],
