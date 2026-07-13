@@ -17,7 +17,7 @@ but do **not** block foundation work.
 | 1 | Foundation & QuadX theme ✅ **done** | M | — |
 | 2 | App shell, navigation & simulated roles ✅ **done** | M | 1 |
 | 3 | Public help center & article experience ✅ **done** | M | 2 |
-| 4 | Ticket submission & requester portal | L | 3 |
+| 4 | Ticket submission & requester portal ✅ **done** | L | 3 |
 | 5 | Agent ticket list & detail workspace | L | 4 |
 | 6 | Classification, assignment & escalation | M | 5 |
 | 7 | Knowledge-base administration | M | 3 |
@@ -64,19 +64,26 @@ but do **not** block foundation work.
   published+public in one place; `useQuery` read-only hook (no `useMutation` yet —
   no writes until M4). Dependency-free `ArticleBody` renderer (`## `/`- `/`**` `).
 
-## M4 — Ticket submission & requester portal (L)
+## M4 — Ticket submission & requester portal (L) — ✅ **done**
 
 - **Objective:** Intake + requester tracking end-to-end.
 - **Included:** Progressive web form (concern drives conditional fields);
   simulated transaction-prefill (read-only known fields); reference +
   confirmation; requester portal at `/t/:token` (status, thread, reply, reopen);
-  `requesterService` token resolution.
+  `requesterService` token resolution. Adds `useMutation`.
 - **Exclusions:** Real tokens/auth; agent-side workspace (M5).
 - **Dependencies:** M3.
-- **Acceptance:** A guest submits and tracks a ticket end-to-end; the ticket lands
-  in the correct team's unassigned queue; the portal opens only via token, never
-  by reference alone.
+- **Acceptance:** ✅ A guest submits and tracks a ticket end-to-end; the ticket
+  lands in the correct team's unassigned queue (New→Open, unassigned); the portal
+  opens only via access token, never by reference. Covered by 12 tests + browser
+  spot-check (portal render, transaction prefill).
 - **Complexity:** L.
+- **As-built notes:** Ticket/support models + seed (`data/tickets.ts`,
+  `data/catalog.ts`); `catalogService` (teams/taxonomy/transactions),
+  `ticketService` (create/reply/reopen, mutates module state), `requesterService`
+  (token→portal). Routing = category `defaultTeamId` (rule overrides deferred to
+  M6). Reply moves Pending Requester→In Progress and Resolved→Reopened. Attachments
+  are metadata-only (no upload). Added `ui/Select`, `ui/Textarea`.
 
 ## M5 — Agent ticket list & detail workspace (L)
 

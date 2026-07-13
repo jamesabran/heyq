@@ -24,6 +24,18 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 4 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M4.1 | **Routing = category `defaultTeamId`** (no rules engine) | Smallest correct routing for "lands in the right team's queue"; admin rule overrides deferred to M6/M8 (avoids a generic engine, D18). |
+| M4.2 | **Access token is the only portal key**; reference never resolves | Enforces product-rule #6 in `requesterService.resolveAccessToken` — a reference passed to `/t/:token` returns "not found". |
+| M4.3 | **Requester description seeds the first public message + a system ack** | Gives the portal a sensible initial thread; mirrors a real intake acknowledgement (simulated). |
+| M4.4 | **Reply transitions: Pending Requester→In Progress, Resolved→Reopened**; explicit Reopen for Resolved/Closed | Matches the lifecycle in the plan without building Closed→follow-up linking (deferred, provisional). |
+| M4.5 | **Attachments are metadata-only** (name/size/type), validated client-side | No upload/storage in the mock MVP; file bytes are never read/sent. |
+| M4.6 | **`useMutation` is variadic** over the service function's args | Lets it wrap `addRequesterMessage(id, body)` and `createTicket(input)` uniformly. |
+| M4.7 | **Added `authorName` to `TicketMessage`; standalone `RelatedTransaction` with requester fields** | Display convenience + transaction prefill; additive, harmless. |
+
 ## Milestone 3 implementation decisions
 
 | # | Decision | Rationale |

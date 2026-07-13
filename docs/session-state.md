@@ -7,11 +7,11 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–3 implemented and passing all gates.** A standalone HeyQ app
-exists with the QuadX theme + light/dark, a full navigable route tree with
-role-based gating, and a working **public help center** (browse, search, read)
-over a typed async `kbService` + `useQuery`. The approved source of truth is
-[`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+**Milestones 1–4 implemented and passing all gates.** A standalone HeyQ app with
+the QuadX theme + light/dark, full route tree + role gating, the **public help
+center**, and **ticket submission + requester portal** (create, track, reply,
+reopen) over typed async services + `useQuery`/`useMutation`. The approved source
+of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -66,11 +66,26 @@ over a typed async `kbService` + `useQuery`. The approved source of truth is
   tests **29/29** ✓, build ✓. (Browser spot-check deferred — MCP classifier
   outage during the session; automated tests cover the acceptance criteria.)
 
+## Done (Milestone 4)
+
+- Models: `ticket.ts`, `support.ts`. Seed: `data/tickets.ts` (2 demo tickets w/
+  tokens), `data/catalog.ts` (4 teams, 11 concern categories, 1 transaction).
+- Services: `catalogService`, `ticketService` (create/reply/reopen, mutates
+  module state), `requesterService` (token→portal). `useMutation` hook;
+  `makeId`/`nowIso` helpers.
+- Pages: `/contact` progressive form (conditional fields, transaction prefill,
+  attachments-as-metadata, validation, confirmation w/ reference + secure link),
+  `/t/:token` portal (status, details, thread, reply, reopen).
+- Components: `StatusChip`, `ConversationThread`, `AttachmentPicker`; `ui/Select`,
+  `ui/Textarea`. `formatDateTime` util.
+- **Gates green:** tokens ✓, lint ✓ (3 fast-refresh warnings), typecheck ✓,
+  tests **41/41** ✓, build ✓. Browser-verified (portal + transaction prefill).
+
 ## Next up
 
-**Milestone 4 — Ticket submission & requester portal** (see
-[`roadmap.md`](roadmap.md)). Lands the first writes, so `useMutation` joins
-`useQuery` then.
+**Milestone 5 — Agent ticket list & detail workspace** (see
+[`roadmap.md`](roadmap.md)): queues, 3-pane detail, reply, internal notes,
+timeline, SLA states. Introduces `InternalNote` (never shown to requesters).
 
 ## Open questions (non-blocking for M1)
 
