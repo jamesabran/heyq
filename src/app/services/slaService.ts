@@ -9,10 +9,12 @@
  */
 import type { SlaState, SlaSummary, SlaTargetSummary, Ticket } from '../models/ticket';
 import { simulatedNowMs } from '../lib/clock';
+import { slaConfig } from '../data/catalog';
 
 const HOUR = 60 * 60 * 1000;
-export const FIRST_RESPONSE_TARGET_MS = 4 * HOUR;
-export const RESOLUTION_TARGET_MS = 48 * HOUR;
+// Targets are read from the editable SLA config so admin changes flow through.
+const firstResponseTargetMs = () => slaConfig.firstResponseHours * HOUR;
+const resolutionTargetMs = () => slaConfig.resolutionHours * HOUR;
 const AT_RISK_RATIO = 0.75;
 
 function stateForElapsed(startIso: string, targetMs: number, doneAtIso?: string): SlaTargetSummary {
@@ -30,20 +32,18 @@ function stateForElapsed(startIso: string, targetMs: number, doneAtIso?: string)
 
 /** Compute the first-response + resolution SLA summary for a ticket. */
 export function computeSlaSummary(ticket: Ticket): SlaSummary {
-  const firstResponse = stateForElapsed(
-    ticket.createdAt,
-    FIRST_RESPONSE_TARGET_MS,
-    ticket.firstResponseAt,
-  );
+  const firstTarget = firstResponseTargetMs();
+  const resolutionTarget = resolutionTargetMs();
+  const firstResponse = stateForElapsed(ticket.createdAt, firstTarget, ticket.firstResponseAt);
 
   const resolvedish = ticket.status === 'resolved' || ticket.status === 'closed';
   let resolution: SlaTargetSummary;
   if (resolvedish) {
-    resolution = stateForElapsed(ticket.createdAt, RESOLUTION_TARGET_MS, ticket.resolvedAt ?? ticket.updatedAt);
+    resolution = stateForElapsed(ticket.createdAt, resolutionTarget, ticket.resolvedAt ?? ticket.updatedAt);
   } else if (ticket.status === 'pending_requester') {
-    resolution = { state: 'paused', dueAt: new Date(new Date(ticket.createdAt).getTime() + RESOLUTION_TARGET_MS).toISOString() };
+    resolution = { state: 'paused', dueAt: new Date(new Date(ticket.createdAt).getTime() + resolutionTarget).toISOString() };
   } else {
-    resolution = stateForElapsed(ticket.createdAt, RESOLUTION_TARGET_MS);
+    resolution = stateForElapsed(ticket.createdAt, resolutionTarget);
   }
 
   return { firstResponse, resolution };

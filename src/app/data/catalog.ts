@@ -19,14 +19,24 @@ export interface AgentRecord {
   name: string;
   teamId?: string;
   tier?: SupportTier;
+  active: boolean;
 }
 
 export const agents: AgentRecord[] = [
-  { id: 'l1_agent', name: 'Alex Cruz', teamId: 'team-cs', tier: 'L1' },
-  { id: 'l2_specialist', name: 'Bea Santos', teamId: 'team-claims', tier: 'L2' },
-  { id: 'team_lead', name: 'Carlo Reyes', teamId: 'team-cs', tier: 'L2' },
-  { id: 'admin', name: 'Ella Tan' },
+  { id: 'l1_agent', name: 'Alex Cruz', teamId: 'team-cs', tier: 'L1', active: true },
+  { id: 'l2_specialist', name: 'Bea Santos', teamId: 'team-claims', tier: 'L2', active: true },
+  { id: 'team_lead', name: 'Carlo Reyes', teamId: 'team-cs', tier: 'L2', active: true },
+  { id: 'admin', name: 'Ella Tan', active: true },
 ];
+
+// SLA configuration (module state, editable via the SLA admin screen). slaService
+// reads these so edits flow through to SLA badges. Business hours is a label only
+// (no real calendar in the mock).
+export const slaConfig = {
+  firstResponseHours: 4,
+  resolutionHours: 48,
+  businessHours: 'Mon–Fri, 9:00–18:00 (Asia/Manila)',
+};
 
 export const ticketCategories: TicketCategory[] = [
   { id: 'cat-general', slug: 'general', name: 'General inquiry', defaultTeamId: 'team-cs', subcategories: [{ id: 'sub-gen-info', name: 'General information' }, { id: 'sub-gen-feedback', name: 'Feedback' }] },
