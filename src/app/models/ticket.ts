@@ -89,6 +89,47 @@ export interface StatusEvent {
   timestamp: string;
 }
 
+// Assignment history (claim / reassign / team change). Separate from status.
+export interface Assignment {
+  id: string;
+  ticketId: string;
+  actor: string;
+  fromAssigneeId?: string;
+  toAssigneeId?: string;
+  fromTeamId?: string;
+  toTeamId?: string;
+  timestamp: string;
+}
+
+// Escalation history — the Escalated view/timeline reads this. Escalation is a
+// SEPARATE dimension from workflow status (docs/product-rules.md #2).
+export interface Escalation {
+  id: string;
+  ticketId: string;
+  actor: string;
+  direction: 'escalate' | 'de-escalate';
+  fromTier: SupportTier;
+  toTier: SupportTier;
+  fromTeamId: string;
+  toTeamId: string;
+  reason?: string;
+  note: string;
+  timestamp: string;
+}
+
+export type EscalationReason =
+  | 'needs_specialist'
+  | 'complex_case'
+  | 'policy_exception'
+  | 'high_value';
+
+export const ESCALATION_REASON_LABELS: Record<EscalationReason, string> = {
+  needs_specialist: 'Needs specialist',
+  complex_case: 'Complex case',
+  policy_exception: 'Policy exception',
+  high_value: 'High-value / VIP',
+};
+
 // Simulated secure-link grant. A ticket reference alone does NOT grant portal
 // access — the portal resolves this opaque token (docs/product-rules.md #6).
 export interface RequesterAccess {

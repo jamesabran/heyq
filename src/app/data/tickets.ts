@@ -3,6 +3,8 @@
 // portal works out of the box: one Pending Requester (reply -> In Progress) and
 // one Resolved (reopen demo). Access tokens are opaque simulated strings.
 import type {
+  Assignment,
+  Escalation,
   InternalNote,
   Requester,
   RequesterAccess,
@@ -145,6 +147,16 @@ export const statusEvents: StatusEvent[] = [
   { id: 'se-seed-8b', ticketId: 'tkt-seed-8', actor: 'system', fromStatus: 'new', toStatus: 'open', timestamp: '2026-07-13T09:00:01Z' },
   { id: 'se-seed-8c', ticketId: 'tkt-seed-8', actor: 'l1_agent', fromStatus: 'open', toStatus: 'in_progress', timestamp: '2026-07-13T09:45:00Z' },
   { id: 'se-seed-8d', ticketId: 'tkt-seed-8', actor: 'l1_agent', fromStatus: 'in_progress', toStatus: 'pending_requester', timestamp: '2026-07-13T09:46:00Z' },
+];
+
+export const assignments: Assignment[] = [
+  { id: 'asg-seed-4a', ticketId: 'tkt-seed-4', actor: 'l1_agent', toAssigneeId: 'l1_agent', toTeamId: 'team-cs', timestamp: '2026-07-14T04:20:00Z' },
+  { id: 'asg-seed-5a', ticketId: 'tkt-seed-5', actor: 'l1_agent', toAssigneeId: 'l1_agent', toTeamId: 'team-cs', timestamp: '2026-07-13T20:05:00Z' },
+  { id: 'asg-seed-7a', ticketId: 'tkt-seed-7', actor: 'team_lead', fromAssigneeId: undefined, toAssigneeId: 'l2_specialist', fromTeamId: 'team-claims', toTeamId: 'team-claims', timestamp: '2026-07-13T09:00:00Z' },
+];
+
+export const escalations: Escalation[] = [
+  { id: 'esc-seed-7a', ticketId: 'tkt-seed-7', actor: 'team_lead', direction: 'escalate', fromTier: 'L1', toTier: 'L2', fromTeamId: 'team-claims', toTeamId: 'team-claims', reason: 'high_value', note: 'High-value parcel missing over a week — needs specialist trace.', timestamp: '2026-07-13T09:00:00Z' },
 ];
 
 export const requesterAccess: RequesterAccess[] = [

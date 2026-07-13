@@ -7,7 +7,7 @@
  *   GET /catalog/teams             → listTeams
  *   GET /transactions/:id          → getTransactionById
  */
-import { relatedTransactions, teams, ticketCategories } from '../data/catalog';
+import { agents, relatedTransactions, teams, ticketCategories, type AgentRecord } from '../data/catalog';
 import type { Team, TicketCategory } from '../models/support';
 import type { RelatedTransaction } from '../models/ticket';
 import { clone, simulateLatency } from '../lib/mock';
@@ -35,4 +35,10 @@ export async function getTeamById(id: string): Promise<Team | null> {
 export async function getTransactionById(id: string): Promise<RelatedTransaction | null> {
   await simulateLatency();
   return clone(relatedTransactions.find((t) => t.id === id) ?? null);
+}
+
+/** Agents, optionally scoped to a team (for reassignment pickers). */
+export async function listAgents(teamId?: string): Promise<AgentRecord[]> {
+  await simulateLatency();
+  return clone(agents.filter((a) => !teamId || a.teamId === teamId));
 }
