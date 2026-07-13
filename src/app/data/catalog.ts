@@ -1,7 +1,7 @@
 // Support catalog seed (module state) — teams, concern taxonomy, and a demo
 // transaction for "from transaction" prefill. Access via catalogService.
 import type { Team, TicketCategory } from '../models/support';
-import type { RelatedTransaction } from '../models/ticket';
+import type { RelatedTransaction, SupportTier } from '../models/ticket';
 
 const BRAND = 'ggx';
 
@@ -10,6 +10,22 @@ export const teams: Team[] = [
   { id: 'team-claims', name: 'Claims', brandId: BRAND },
   { id: 'team-payments', name: 'Payments', brandId: BRAND },
   { id: 'team-tech', name: 'Technical', brandId: BRAND },
+];
+
+// Agent records (ids match the demo identities in IdentityContext so "My Queue"
+// filters by the signed-in identity's id).
+export interface AgentRecord {
+  id: string;
+  name: string;
+  teamId?: string;
+  tier?: SupportTier;
+}
+
+export const agents: AgentRecord[] = [
+  { id: 'l1_agent', name: 'Alex Cruz', teamId: 'team-cs', tier: 'L1' },
+  { id: 'l2_specialist', name: 'Bea Santos', teamId: 'team-claims', tier: 'L2' },
+  { id: 'team_lead', name: 'Carlo Reyes', teamId: 'team-cs', tier: 'L2' },
+  { id: 'admin', name: 'Ella Tan' },
 ];
 
 export const ticketCategories: TicketCategory[] = [

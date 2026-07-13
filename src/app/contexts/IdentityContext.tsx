@@ -24,9 +24,9 @@ export interface Identity {
 export const DEMO_IDENTITIES: Record<string, Identity> = {
   guest: { id: 'guest', name: 'Guest Visitor', role: 'guest' },
   customer: { id: 'customer', name: 'Mika Dela Cruz', role: 'customer' },
-  l1_agent: { id: 'l1_agent', name: 'Alex Cruz', role: 'l1_agent', tier: 'L1', teamId: 'cs', teamName: 'Customer Support' },
-  l2_specialist: { id: 'l2_specialist', name: 'Bea Santos', role: 'l2_specialist', tier: 'L2', teamId: 'claims', teamName: 'Claims' },
-  team_lead: { id: 'team_lead', name: 'Carlo Reyes', role: 'team_lead', tier: 'L2', teamId: 'cs', teamName: 'Customer Support' },
+  l1_agent: { id: 'l1_agent', name: 'Alex Cruz', role: 'l1_agent', tier: 'L1', teamId: 'team-cs', teamName: 'Customer Support' },
+  l2_specialist: { id: 'l2_specialist', name: 'Bea Santos', role: 'l2_specialist', tier: 'L2', teamId: 'team-claims', teamName: 'Claims' },
+  team_lead: { id: 'team_lead', name: 'Carlo Reyes', role: 'team_lead', tier: 'L2', teamId: 'team-cs', teamName: 'Customer Support' },
   kb_editor: { id: 'kb_editor', name: 'Dana Lim', role: 'kb_editor' },
   admin: { id: 'admin', name: 'Ella Tan', role: 'admin' },
 };

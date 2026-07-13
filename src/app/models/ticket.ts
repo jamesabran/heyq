@@ -54,8 +54,19 @@ export interface Ticket {
   escalatedAt?: string;
 }
 
-// Public conversation entry. Internal notes are a SEPARATE type (added in M5) and
-// are never rendered to requesters (docs/product-rules.md #5).
+// Internal note — a SEPARATE type from TicketMessage so it can never be passed to
+// a requester-facing view. Agent-only (docs/product-rules.md #5).
+export interface InternalNote {
+  id: string;
+  ticketId: string;
+  agentId: string;
+  agentName: string;
+  body: string;
+  createdAt: string;
+}
+
+// Public conversation entry. Internal notes are a SEPARATE type and are never
+// rendered to requesters (docs/product-rules.md #5).
 export interface TicketMessage {
   id: string;
   ticketId: string;
@@ -102,6 +113,64 @@ export interface MockAttachment {
   name: string;
   size: number;
   type: string;
+}
+
+export type ResolutionType = 'solved' | 'duplicate' | 'no_response' | 'not_reproducible';
+
+export const RESOLUTION_LABELS: Record<ResolutionType, string> = {
+  solved: 'Solved',
+  duplicate: 'Duplicate',
+  no_response: 'No response',
+  not_reproducible: 'Not reproducible',
+};
+
+// SLA state for a single target (first-response or resolution). Computed against
+// the simulated clock; independent of ticket status and escalation.
+export type SlaState = 'on_track' | 'at_risk' | 'breached' | 'met' | 'paused';
+
+export interface SlaTargetSummary {
+  state: SlaState;
+  /** Target deadline (ISO), for display. */
+  dueAt?: string;
+}
+
+export interface SlaSummary {
+  firstResponse: SlaTargetSummary;
+  resolution: SlaTargetSummary;
+}
+
+// ── View models (composed by services for agent-facing screens) ──────────────
+
+export interface TicketListItem {
+  ticket: Ticket;
+  requesterName: string;
+  teamName: string;
+  categoryName: string;
+  assigneeName?: string;
+  sla: SlaSummary;
+}
+
+export type TimelineEventType = 'status' | 'note' | 'assignment' | 'escalation';
+
+export interface TimelineEvent {
+  id: string;
+  type: TimelineEventType;
+  actor: string;
+  summary: string;
+  timestamp: string;
+}
+
+export interface TicketDetailView {
+  ticket: Ticket;
+  requester: Requester;
+  teamName: string;
+  categoryName: string;
+  subcategoryName?: string;
+  assigneeName?: string;
+  messages: TicketMessage[];
+  notes: InternalNote[];
+  timeline: TimelineEvent[];
+  sla: SlaSummary;
 }
 
 export const STATUS_LABELS: Record<TicketStatus, string> = {

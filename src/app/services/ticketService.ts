@@ -14,6 +14,7 @@
  *   POST /tickets/:id/reopen           → reopenTicket
  */
 import {
+  internalNotes,
   requesterAccess,
   requesters,
   statusEvents,
@@ -21,17 +22,31 @@ import {
   ticketState,
   tickets,
 } from '../data/tickets';
-import { ticketCategories } from '../data/catalog';
-import type {
-  MockAttachment,
-  Requester,
-  Ticket,
-  TicketMessage,
-  TicketStatus,
+import { agents, teams, ticketCategories } from '../data/catalog';
+import {
+  STATUS_LABELS,
+  type InternalNote,
+  type MockAttachment,
+  type Requester,
+  type ResolutionType,
+  type Ticket,
+  type TicketDetailView,
+  type TicketListItem,
+  type TicketMessage,
+  type TicketStatus,
+  type TimelineEvent,
 } from '../models/ticket';
+import { computeSlaSummary, isSlaAtRiskOrBreached } from './slaService';
 import { clone, makeId, nowIso, simulateLatency } from '../lib/mock';
 
 const BRAND = 'ggx';
+
+const agentName = (id?: string) => agents.find((a) => a.id === id)?.name;
+const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? 'Unassigned';
+const categoryName = (id: string) => ticketCategories.find((c) => c.id === id)?.name ?? 'Uncategorized';
+const requesterName = (id: string) => requesters.find((r) => r.id === id)?.name ?? 'Requester';
+
+const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 
 export interface CreateTicketInput {
   name: string;
@@ -174,5 +189,164 @@ export async function reopenTicket(ticketId: string): Promise<Ticket> {
   if (ticket.status === 'resolved' || ticket.status === 'closed') {
     transition(ticket, 'reopened', 'requester', 'Reopened by requester');
   }
+  return clone(ticket);
+}
+
+// ── Agent workspace ──────────────────────────────────────────────────────────
+
+export type TicketQueue = 'mine' | 'team' | 'unassigned' | 'escalated' | 'sla' | 'all';
+
+export interface ListTicketsParams {
+  queue?: TicketQueue;
+  /** Signed-in agent id (for the "mine" queue). */
+  viewerId?: string;
+  /** Signed-in agent's team; undefined = see all teams (e.g. admin). */
+  viewerTeamId?: string;
+  status?: TicketStatus;
+  search?: string;
+  sort?: 'updated' | 'created' | 'priority';
+}
+
+function toListItem(ticket: Ticket): TicketListItem {
+  return {
+    ticket: clone(ticket),
+    requesterName: requesterName(ticket.requesterId),
+    teamName: teamName(ticket.teamId),
+    categoryName: categoryName(ticket.categoryId),
+    assigneeName: agentName(ticket.assigneeId),
+    sla: computeSlaSummary(ticket),
+  };
+}
+
+/** Filtered, sorted ticket list for an agent queue. */
+export async function listTickets(params: ListTicketsParams = {}): Promise<TicketListItem[]> {
+  await simulateLatency();
+  const { queue = 'all', viewerId, viewerTeamId, status, search, sort = 'updated' } = params;
+  const scoped = (t: Ticket) => viewerTeamId === undefined || t.teamId === viewerTeamId;
+
+  let result = tickets.filter((t) => {
+    switch (queue) {
+      case 'mine':
+        return t.assigneeId === viewerId;
+      case 'team':
+        return scoped(t);
+      case 'unassigned':
+        return !t.assigneeId && scoped(t);
+      case 'escalated':
+        return t.escalationState !== 'none' && scoped(t);
+      case 'sla':
+        return isSlaAtRiskOrBreached(t) && scoped(t);
+      case 'all':
+      default:
+        return scoped(t);
+    }
+  });
+
+  if (status) result = result.filter((t) => t.status === status);
+  if (search?.trim()) {
+    const q = search.trim().toLowerCase();
+    result = result.filter((t) =>
+      `${t.reference} ${t.subject} ${requesterName(t.requesterId)}`.toLowerCase().includes(q),
+    );
+  }
+
+  result = [...result].sort((a, b) => {
+    if (sort === 'priority') return (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9);
+    if (sort === 'created') return b.createdAt.localeCompare(a.createdAt);
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+
+  return result.map(toListItem);
+}
+
+function buildTimeline(ticketId: string): TimelineEvent[] {
+  const events: TimelineEvent[] = statusEvents
+    .filter((e) => e.ticketId === ticketId)
+    .map((e) => ({
+      id: e.id,
+      type: 'status' as const,
+      actor: agentName(e.actor) ?? e.actor,
+      summary: e.fromStatus
+        ? `Status changed ${STATUS_LABELS[e.fromStatus]} → ${STATUS_LABELS[e.toStatus]}`
+        : `Ticket created (${STATUS_LABELS[e.toStatus]})`,
+      timestamp: e.timestamp,
+    }));
+  return events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+/** Full agent detail view: context, public messages, internal notes, timeline, SLA. */
+export async function getTicketDetail(ticketId: string): Promise<TicketDetailView | null> {
+  await simulateLatency();
+  const ticket = tickets.find((t) => t.id === ticketId);
+  const requester = ticket && requesters.find((r) => r.id === ticket.requesterId);
+  if (!ticket || !requester) return null;
+
+  const category = ticketCategories.find((c) => c.id === ticket.categoryId);
+  const subcategory = category?.subcategories.find((s) => s.id === ticket.subcategoryId);
+
+  return clone({
+    ticket,
+    requester,
+    teamName: teamName(ticket.teamId),
+    categoryName: category?.name ?? 'Uncategorized',
+    subcategoryName: subcategory?.name,
+    assigneeName: agentName(ticket.assigneeId),
+    messages: ticketMessages
+      .filter((m) => m.ticketId === ticketId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    notes: internalNotes
+      .filter((n) => n.ticketId === ticketId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    timeline: buildTimeline(ticketId),
+    sla: computeSlaSummary(ticket),
+  });
+}
+
+/** Agent posts a public reply. Sets first-response and moves New/Open into progress. */
+export async function addAgentReply(ticketId: string, agentId: string, body: string): Promise<TicketMessage> {
+  await simulateLatency();
+  const ticket = tickets.find((t) => t.id === ticketId);
+  if (!ticket) throw new Error('Ticket not found');
+  const now = nowIso();
+
+  const message: TicketMessage = {
+    id: makeId('msg'), ticketId, authorType: 'agent', authorId: agentId,
+    authorName: agentName(agentId) ?? 'Support', body: body.trim(), channel: 'web', visibility: 'public', createdAt: now,
+  };
+  ticketMessages.push(message);
+  ticket.updatedAt = now;
+  if (!ticket.firstResponseAt) ticket.firstResponseAt = now;
+  if (ticket.status === 'new' || ticket.status === 'open') transition(ticket, 'in_progress', agentId);
+
+  return clone(message);
+}
+
+/** Agent adds an internal note (never visible to requesters). */
+export async function addInternalNote(ticketId: string, agentId: string, body: string): Promise<InternalNote> {
+  await simulateLatency();
+  const ticket = tickets.find((t) => t.id === ticketId);
+  if (!ticket) throw new Error('Ticket not found');
+  const now = nowIso();
+  const note: InternalNote = {
+    id: makeId('note'), ticketId, agentId, agentName: agentName(agentId) ?? 'Agent', body: body.trim(), createdAt: now,
+  };
+  internalNotes.push(note);
+  ticket.updatedAt = now;
+  return clone(note);
+}
+
+/** Agent resolves a ticket with a resolution type. */
+export async function resolveTicket(
+  ticketId: string,
+  agentId: string,
+  resolutionType: ResolutionType,
+  note?: string,
+): Promise<Ticket> {
+  await simulateLatency();
+  const ticket = tickets.find((t) => t.id === ticketId);
+  if (!ticket) throw new Error('Ticket not found');
+  ticket.resolutionType = resolutionType;
+  ticket.resolvedAt = nowIso();
+  transition(ticket, 'resolved', agentId, note);
   return clone(ticket);
 }
