@@ -20,7 +20,7 @@ but do **not** block foundation work.
 | 4 | Ticket submission & requester portal ✅ **done** | L | 3 |
 | 5 | Agent ticket list & detail workspace ✅ **done** | L | 4 |
 | 6 | Classification, assignment & escalation ✅ **done** | M | 5 |
-| 7 | Knowledge-base administration | M | 3 |
+| 7 | Knowledge-base administration ✅ **done** | M | 3 |
 | 8 | Agent, team, queue & taxonomy administration | M | 6 |
 | 9 | Simulated notifications & reporting | M | 6 |
 | 10 | State coverage | S–M | 3–9 |
@@ -124,16 +124,23 @@ but do **not** block foundation work.
   escalation. `TicketActions` right-pane panels; `catalogService.listAgents`.
   Escalation takes a target team/owner (no fixed L2-team model).
 
-## M7 — Knowledge-base administration (M)
+## M7 — Knowledge-base administration (M) — ✅ **done**
 
 - **Objective:** KB authoring.
 - **Included:** Article list, draft/publish, categories, ordering, revisions,
   public/internal visibility.
 - **Exclusions:** Public reading UI (M3).
 - **Dependencies:** M3.
-- **Acceptance:** An editor drafts, revises, sets visibility, and publishes; the
-  article appears publicly; internal-only articles never appear publicly.
+- **Acceptance:** ✅ An editor drafts, revises, sets visibility, and publishes;
+  the article appears publicly; internal-only articles never appear publicly
+  (enforced in `kbService` public reads). 7 tests + browser check.
 - **Complexity:** M.
+- **As-built notes:** `KbRevision` type + seed; `kbService` gains admin reads
+  (`listAllArticles`/`getArticleForEdit`/`listAllCategories`) and writes
+  (`createArticle`/`updateArticle` w/ revision snapshot / `publishArticle` /
+  `unpublishArticle` / `setArticleVisibility` / `listRevisions`). Nested
+  `/admin/kb` routes (list / new / :id) with `KbAdminList` + `KbArticleEditor`.
+  Category CRUD deferred (taxonomy admin is M8).
 
 ## M8 — Agent, team, queue & taxonomy administration (M)
 

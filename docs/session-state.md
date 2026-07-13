@@ -7,13 +7,12 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–6 implemented and passing all gates.** A standalone HeyQ app with
+**Milestones 1–7 implemented and passing all gates.** A standalone HeyQ app with
 the QuadX theme + light/dark, full route tree + role gating, the **public help
-center**, **ticket submission + requester portal**, the **agent workspace**
-(queues, 3-pane detail, reply, internal notes, resolve, SLA, timeline), and
-**triage** (claim/assign, classification + re-route, L1→L2 escalation with
-history). The approved source of truth is
-[`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+center**, **ticket submission + requester portal**, the **agent workspace**,
+**triage** (claim/assign, classification + re-route, L1→L2 escalation), and
+**KB administration** (draft/publish, visibility, revisions). The approved source
+of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -113,11 +112,23 @@ history). The approved source of truth is
   tests **61/61** ✓, build ✓. Browser-verified (escalated ticket: state separate
   from status, timeline history, controls).
 
+## Done (Milestone 7)
+
+- `KbRevision` type + seed; `kbService` admin reads (`listAllArticles`,
+  `getArticleForEdit`, `listAllCategories`) and writes (`createArticle`,
+  `updateArticle` w/ revision snapshot, `publishArticle`, `unpublishArticle`,
+  `setArticleVisibility`, `listRevisions`).
+- Nested `/admin/kb` routes (list / new / :id); `KbAdminList` (all articles +
+  publish toggle) and `KbArticleEditor` (create/edit, visibility, publish,
+  revisions).
+- **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
+  tests **68/68** ✓, build ✓. Browser-verified (admin list).
+
 ## Next up
 
-**Milestone 7 — Knowledge-base administration** (see [`roadmap.md`](roadmap.md)):
-article list, draft/publish, categories, ordering, revisions, public/internal
-visibility. First KB writes (kbService gains mutations).
+**Milestone 8 — Agent, team, queue & taxonomy administration** (see
+[`roadmap.md`](roadmap.md)): agents/roles/tiers/activation, teams/queues, routing
+rules, SLA policies + business hours, concern taxonomy.
 
 ## Open questions (non-blocking for M1)
 

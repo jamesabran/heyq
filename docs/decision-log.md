@@ -24,6 +24,16 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 7 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M7.1 | **Admin reads are separate, unfiltered functions** (`listAllArticles`, `getArticleForEdit`) | Editors need drafts/internal; public reads still filter to published+public in one place (product rule #5) — so publishing an internal article still never surfaces it publicly. |
+| M7.2 | **`updateArticle` snapshots the previous title/body as a `KbRevision`** | Simple, honest revision history without a diffing engine. |
+| M7.3 | **Publish/visibility are explicit service actions**, not free-form status edits | Keeps the lifecycle controlled and mirrors intended endpoints. |
+| M7.4 | **Nested `/admin/kb` routes** (list / new / :id) | Standard list+editor flow; create navigates to the new article's editor to publish. |
+| M7.5 | **KB category CRUD deferred to M8** (taxonomy admin) | M7 authors articles against existing categories; category management belongs with the other admin surfaces. |
+
 ## Milestone 6 implementation decisions
 
 | # | Decision | Rationale |
