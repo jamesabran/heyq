@@ -24,6 +24,7 @@ import { StatusChip } from '../../components/ticket/StatusChip';
 import { PriorityBadge, SlaBadge } from '../../components/ticket/badges';
 import { AgentConversation } from '../../components/ticket/AgentConversation';
 import { TicketComposer } from '../../components/ticket/TicketComposer';
+import { TicketActions } from '../../components/ticket/TicketActions';
 import { EmptyState, LoadingGrid } from '../../components/help/HelpStates';
 
 export function TicketDetail() {
@@ -164,11 +165,7 @@ export function TicketDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-4 text-xs text-muted-foreground">
-              Assignment, escalation, and classification controls arrive in Milestone 6.
-            </CardContent>
-          </Card>
+          <TicketActions view={view} agentId={identity.id} onChanged={refresh} />
 
           <p className="px-1 text-xs text-muted-foreground">Opened {formatDate(ticket.createdAt)}</p>
         </div>
