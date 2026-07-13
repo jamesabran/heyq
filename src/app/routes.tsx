@@ -4,6 +4,10 @@ import { AppLayout } from './layouts/AppLayout';
 import { PublicLayout } from './layouts/PublicLayout';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { Validation } from './pages/Validation';
+import { HelpHome } from './pages/help/HelpHome';
+import { HelpCategory } from './pages/help/HelpCategory';
+import { HelpArticle } from './pages/help/HelpArticle';
+import { HelpSearch } from './pages/help/HelpSearch';
 import { RequireRole } from './components/RequireRole';
 import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from './lib/roles';
 
@@ -23,10 +27,10 @@ export const routes: RouteObject[] = [
     element: <PublicLayout />,
     children: [
       { index: true, element: <Navigate to="/app" replace /> },
-      { path: 'help', element: ph('Help Center', 'Search, featured articles, and categories.', 'M3') },
-      { path: 'help/c/:category', element: ph('Category', 'Category / subcategory listing.', 'M3') },
-      { path: 'help/a/:slug', element: ph('Article', 'Knowledge-base article view.', 'M3') },
-      { path: 'help/search', element: ph('Search Results', 'Help-center search results.', 'M3') },
+      { path: 'help', element: <HelpHome /> },
+      { path: 'help/search', element: <HelpSearch /> },
+      { path: 'help/c/:category', element: <HelpCategory /> },
+      { path: 'help/a/:slug', element: <HelpArticle /> },
       { path: 'contact', element: ph('Submit a Ticket', 'Public ticket submission form.', 'M4') },
       { path: 't/:token', element: ph('Requester Portal', 'Simulated secure-link ticket portal.', 'M4') },
       { path: 'validation', element: <Validation /> },
