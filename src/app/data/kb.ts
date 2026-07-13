@@ -1,7 +1,7 @@
 // Mock KB seed data (module state). Components must NOT import this directly —
 // access it through services/kbService.ts. Includes one internal and one draft
 // article so public-visibility filtering is demonstrable.
-import type { KbArticle, KbCategory } from '../models/kb';
+import type { KbArticle, KbCategory, KbRevision } from '../models/kb';
 
 const BRAND = 'ggx';
 
@@ -209,4 +209,9 @@ For security, reset links expire after a short time.`,
     status: 'draft', visibility: 'public', ownerId: 'kb_editor', featured: false, order: 3,
     publishedAt: undefined, updatedAt: '2026-07-09T11:00:00Z',
   },
+];
+
+// Revision history (snapshots captured on edit). Seeded with one prior revision.
+export const kbRevisions: KbRevision[] = [
+  { id: 'rev-book-1', articleId: 'art-book', editorId: 'kb_editor', title: 'How to book a delivery', body: 'Booking a delivery with GGX takes just a minute.\n\n## Steps\n- Open the app and tap Book a delivery.', createdAt: '2026-03-02T08:00:00Z' },
 ];

@@ -16,9 +16,15 @@
  *   GET /kb/articles/:slug                 → getArticleBySlug
  *   GET /kb/articles/:id/related           → listRelatedArticles
  */
-import { kbArticles, kbCategories } from '../data/kb';
-import { isPubliclyReadable, type KbArticle, type KbCategory } from '../models/kb';
-import { clone, simulateLatency } from '../lib/mock';
+import { kbArticles, kbCategories, kbRevisions } from '../data/kb';
+import {
+  isPubliclyReadable,
+  type KbArticle,
+  type KbCategory,
+  type KbRevision,
+  type KbVisibility,
+} from '../models/kb';
+import { clone, makeId, nowIso, simulateLatency } from '../lib/mock';
 
 const byOrder = <T extends { order: number }>(a: T, b: T) => a.order - b.order;
 
@@ -35,6 +41,12 @@ export async function listTopLevelCategories(): Promise<KbCategory[]> {
 export async function listSubcategories(parentId: string): Promise<KbCategory[]> {
   await simulateLatency();
   return clone(kbCategories.filter((c) => c.parentId === parentId).sort(byOrder));
+}
+
+/** All categories (flat) — for admin pickers and name lookups. */
+export async function listAllCategories(): Promise<KbCategory[]> {
+  await simulateLatency();
+  return clone([...kbCategories].sort(byOrder));
 }
 
 export async function getCategoryBySlug(slug: string): Promise<KbCategory | null> {
@@ -94,4 +106,116 @@ export async function searchArticles(query: string): Promise<KbArticle[]> {
       `${a.title} ${a.excerpt} ${a.body}`.toLowerCase().includes(q),
     ),
   );
+}
+
+// ── Administration (M7) — unfiltered reads + authoring writes ─────────────────
+// These see ALL articles (draft + internal). They are used only by admin screens
+// gated to KB editors/admins; the public functions above still filter.
+
+/** Every article, ordered by category then order (admin list). */
+export async function listAllArticles(): Promise<KbArticle[]> {
+  await simulateLatency();
+  return clone(
+    [...kbArticles].sort((a, b) =>
+      a.kbCategoryId === b.kbCategoryId ? a.order - b.order : a.kbCategoryId.localeCompare(b.kbCategoryId),
+    ),
+  );
+}
+
+/** Any article by id, regardless of status/visibility (admin editor). */
+export async function getArticleForEdit(id: string): Promise<KbArticle | null> {
+  await simulateLatency();
+  return clone(kbArticles.find((a) => a.id === id) ?? null);
+}
+
+export interface ArticleDraftInput {
+  title: string;
+  kbCategoryId: string;
+  excerpt: string;
+  body: string;
+  visibility: KbVisibility;
+  order?: number;
+}
+
+/** Create a new draft article. */
+export async function createArticle(input: ArticleDraftInput, editorId: string): Promise<KbArticle> {
+  await simulateLatency();
+  const now = nowIso();
+  const article: KbArticle = {
+    id: makeId('art'),
+    brandId: 'ggx',
+    kbCategoryId: input.kbCategoryId,
+    slug: slugify(input.title),
+    title: input.title.trim(),
+    excerpt: input.excerpt.trim(),
+    body: input.body,
+    status: 'draft',
+    visibility: input.visibility,
+    ownerId: editorId,
+    featured: false,
+    order: input.order ?? kbArticles.filter((a) => a.kbCategoryId === input.kbCategoryId).length + 1,
+    updatedAt: now,
+  };
+  kbArticles.push(article);
+  return clone(article);
+}
+
+/** Update an article, snapshotting the previous title/body as a revision. */
+export async function updateArticle(id: string, editorId: string, changes: Partial<ArticleDraftInput>): Promise<KbArticle> {
+  await simulateLatency();
+  const article = kbArticles.find((a) => a.id === id);
+  if (!article) throw new Error('Article not found');
+
+  kbRevisions.push({
+    id: makeId('rev'), articleId: id, editorId,
+    title: article.title, body: article.body, createdAt: nowIso(),
+  });
+
+  if (changes.title !== undefined) { article.title = changes.title.trim(); article.slug = slugify(changes.title); }
+  if (changes.excerpt !== undefined) article.excerpt = changes.excerpt.trim();
+  if (changes.body !== undefined) article.body = changes.body;
+  if (changes.kbCategoryId !== undefined) article.kbCategoryId = changes.kbCategoryId;
+  if (changes.visibility !== undefined) article.visibility = changes.visibility;
+  if (changes.order !== undefined) article.order = changes.order;
+  article.updatedAt = nowIso();
+  return clone(article);
+}
+
+export async function publishArticle(id: string): Promise<KbArticle> {
+  await simulateLatency();
+  const article = kbArticles.find((a) => a.id === id);
+  if (!article) throw new Error('Article not found');
+  article.status = 'published';
+  article.publishedAt = nowIso();
+  article.updatedAt = article.publishedAt;
+  return clone(article);
+}
+
+export async function unpublishArticle(id: string): Promise<KbArticle> {
+  await simulateLatency();
+  const article = kbArticles.find((a) => a.id === id);
+  if (!article) throw new Error('Article not found');
+  article.status = 'draft';
+  article.updatedAt = nowIso();
+  return clone(article);
+}
+
+export async function setArticleVisibility(id: string, visibility: KbVisibility): Promise<KbArticle> {
+  await simulateLatency();
+  const article = kbArticles.find((a) => a.id === id);
+  if (!article) throw new Error('Article not found');
+  article.visibility = visibility;
+  article.updatedAt = nowIso();
+  return clone(article);
+}
+
+export async function listRevisions(articleId: string): Promise<KbRevision[]> {
+  await simulateLatency();
+  return clone(
+    kbRevisions.filter((r) => r.articleId === articleId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  );
+}
+
+function slugify(title: string): string {
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled';
 }

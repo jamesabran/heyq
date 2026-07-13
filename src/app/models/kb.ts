@@ -37,6 +37,16 @@ export interface KbArticle {
   updatedAt: string;
 }
 
+// A point-in-time snapshot captured whenever an article is edited.
+export interface KbRevision {
+  id: string;
+  articleId: string;
+  editorId: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
 /** An article is publicly readable only when published AND public. */
 export function isPubliclyReadable(article: KbArticle): boolean {
   return article.status === 'published' && article.visibility === 'public';
