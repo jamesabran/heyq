@@ -24,6 +24,16 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 6 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M6.1 | **Escalation changes state/tier/team/owner + appends history; status untouched** | Product rule #2 — enforced in `escalateTicket` (status line deliberately not changed) and verified in-browser. |
+| M6.2 | **Escalation takes a target team/owner param** (no fixed "L2 team" model) | Teams aren't tiered in the mock; letting the escalator pick the specialist team/owner is flexible and matches the acceptance without restructuring teams. |
+| M6.3 | **Re-routing = set team to the new category's `defaultTeamId`** on category change (opt-in checkbox) | Demonstrates rules→team routing without a rules engine; respects manual team choices when unchecked. |
+| M6.4 | **Assignment + escalation merged into the timeline; classification-change audit deferred to M9** | Covers the §14 assignment/escalation audit now; a full audit entity/log is M9. |
+| M6.5 | **Mandatory escalation note enforced in the service** (`escalateTicket` throws) and the UI (disabled button) | Belt-and-suspenders so history is always meaningful. |
+
 ## Milestone 5 implementation decisions
 
 | # | Decision | Rationale |

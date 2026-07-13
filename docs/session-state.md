@@ -7,12 +7,13 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–5 implemented and passing all gates.** A standalone HeyQ app with
+**Milestones 1–6 implemented and passing all gates.** A standalone HeyQ app with
 the QuadX theme + light/dark, full route tree + role gating, the **public help
-center**, **ticket submission + requester portal**, and the **agent workspace**
-(queues, 3-pane detail, reply, internal notes, resolve, SLA badges, timeline) —
-over typed async services + `useQuery`/`useMutation`. The approved source of truth
-is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+center**, **ticket submission + requester portal**, the **agent workspace**
+(queues, 3-pane detail, reply, internal notes, resolve, SLA, timeline), and
+**triage** (claim/assign, classification + re-route, L1→L2 escalation with
+history). The approved source of truth is
+[`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -99,11 +100,24 @@ is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
   tests **52/52** ✓, build ✓. Browser-verified (3-pane detail; internal note
   present in agent view, absent in portal).
 
+## Done (Milestone 6)
+
+- `Assignment` + `Escalation` history types & seed (incl. tkt-seed-7's
+  escalation). `ticketService`: `claimTicket`, `assignTicket`,
+  `reclassifyTicket` (re-route on category change), `escalateTicket`
+  (state/tier/team/owner + history, status unchanged), `deescalateTicket`.
+  Timeline merges status + assignment + escalation. `catalogService.listAgents`.
+- `TicketActions` component (assignment / classification / escalation panels) in
+  the detail right pane.
+- **Gates green:** tokens ✓, lint ✓ (4 fast-refresh warnings), typecheck ✓,
+  tests **61/61** ✓, build ✓. Browser-verified (escalated ticket: state separate
+  from status, timeline history, controls).
+
 ## Next up
 
-**Milestone 6 — Classification, assignment & escalation** (see
-[`roadmap.md`](roadmap.md)): classification controls, rules→team routing, manual
-claim/reassign, L1→L2 escalation (separate state/tier/team + history).
+**Milestone 7 — Knowledge-base administration** (see [`roadmap.md`](roadmap.md)):
+article list, draft/publish, categories, ordering, revisions, public/internal
+visibility. First KB writes (kbService gains mutations).
 
 ## Open questions (non-blocking for M1)
 

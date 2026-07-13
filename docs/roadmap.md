@@ -19,7 +19,7 @@ but do **not** block foundation work.
 | 3 | Public help center & article experience ✅ **done** | M | 2 |
 | 4 | Ticket submission & requester portal ✅ **done** | L | 3 |
 | 5 | Agent ticket list & detail workspace ✅ **done** | L | 4 |
-| 6 | Classification, assignment & escalation | M | 5 |
+| 6 | Classification, assignment & escalation ✅ **done** | M | 5 |
 | 7 | Knowledge-base administration | M | 3 |
 | 8 | Agent, team, queue & taxonomy administration | M | 6 |
 | 9 | Simulated notifications & reporting | M | 6 |
@@ -105,19 +105,24 @@ but do **not** block foundation work.
   Aligned identity `teamId`s to catalog team ids. SLA business-hours accuracy and
   policy config deferred to M8.
 
-## M6 — Classification, assignment & escalation (M)
+## M6 — Classification, assignment & escalation (M) — ✅ **done**
 
 - **Objective:** Triage interactions.
-- **Included:** Classification controls; rules→team routing (`routingService`);
-  manual claim/reassign; **L1→L2 escalation** with mandatory reason + note and
-  escalation history — as a separate `escalationState`/tier/team/owner change,
-  **not a status change**.
+- **Included:** Classification controls; rules→team routing (category
+  `defaultTeamId`, re-route on category change); manual claim/reassign/unassign;
+  **L1→L2 escalation** with mandatory reason + note and escalation history — as a
+  separate `escalationState`/tier/team/owner change, **not a status change**.
 - **Exclusions:** Round-robin/workload routing (deferred).
 - **Dependencies:** M5.
-- **Acceptance:** A ticket auto-routes, is assignable, and escalates with history;
-  the Escalated view filters by escalation state/history, not status; workflow
-  status may remain `In Progress` through escalation.
+- **Acceptance:** ✅ A ticket routes, is assignable, and escalates with history;
+  the Escalated view filters by escalation state, not status; status stays
+  `In Progress` through escalation (browser-verified). 8 tests.
 - **Complexity:** M.
+- **As-built notes:** `Assignment` + `Escalation` history types & seed;
+  `ticketService` gains `claimTicket`/`assignTicket`/`reclassifyTicket`/
+  `escalateTicket`/`deescalateTicket`; timeline now merges status + assignment +
+  escalation. `TicketActions` right-pane panels; `catalogService.listAgents`.
+  Escalation takes a target team/owner (no fixed L2-team model).
 
 ## M7 — Knowledge-base administration (M)
 
