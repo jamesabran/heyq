@@ -24,6 +24,16 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 9 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M9.1 | **`notificationService.emit` is a sync call from ticketService actions**, with dedup + mute prefs | One core event → one notification; mirrors a backend-emitted event as a demo stand-in. Dedup on (recipient, event, ticket) within a 3 s window. |
+| M9.2 | **Dependency-free CSS bar charts instead of Recharts** | The plan suggested Recharts, but "simple counters + charts" is fully met by lightweight token-styled bars — avoids a dependency + bundle cost (guardrail: minimal deps). Trivial to swap to Recharts later if richer charts are wanted. |
+| M9.3 | **"Email sent" = an `emailed` flag on the notification**, shown as a badge | Demonstrates the requester-email marker inside an agent-visible surface without a separate delivery model. |
+| M9.4 | **Shared `Dashboard` for reports (all) and supervisor (team-scoped)** | `reportsService.getSummary(teamId?)` powers both; no duplicated dashboard. |
+| M9.5 | **Notification bell shown only in the authenticated shell** | Guests/public pages have no agent feed. |
+
 ## Milestone 8 implementation decisions
 
 | # | Decision | Rationale |

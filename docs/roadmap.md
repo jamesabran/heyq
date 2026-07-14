@@ -22,7 +22,7 @@ but do **not** block foundation work.
 | 6 | Classification, assignment & escalation ✅ **done** | M | 5 |
 | 7 | Knowledge-base administration ✅ **done** | M | 3 |
 | 8 | Agent, team, queue & taxonomy administration ✅ **done** | M | 6 |
-| 9 | Simulated notifications & reporting | M | 6 |
+| 9 | Simulated notifications & reporting ✅ **done** | M | 6 |
 | 10 | State coverage | S–M | 3–9 |
 | 11 | Light/dark, responsive, a11y & interaction QA | M | 1–10 |
 | 12 | Frontend approval & backend-readiness assessment | S | 1–11 |
@@ -160,17 +160,25 @@ but do **not** block foundation work.
   (audit viewer belongs with M9). Category rename/delete deferred (add + reassign
   cover the acceptance).
 
-## M9 — Simulated notifications & reporting (M)
+## M9 — Simulated notifications & reporting (M) — ✅ **done**
 
 - **Objective:** Feedback + operational visibility.
 - **Included:** In-app notification feed + "email sent" markers + prefs/dedup
-  (`notificationService`); operational dashboard — counters + simple Recharts
-  charts (`reportsService`).
+  (`notificationService`); operational dashboard — counters + simple charts
+  (`reportsService`).
 - **Exclusions:** Analytics platform; real delivery.
 - **Dependencies:** M6.
-- **Acceptance:** Core events produce one in-app notification (and an "email sent"
-  marker where applicable); the dashboard reflects the mock dataset.
+- **Acceptance:** ✅ Core events produce one in-app notification (deduped; muted
+  events suppressed) with an "email sent" marker where applicable; the dashboard
+  reflects the mock dataset (browser-verified: 8 total, 1 escalated, 2 breached).
+  10 tests.
 - **Complexity:** M.
+- **As-built notes:** `Notification` model + seed; `notificationService`
+  (`emit` with dedup + mute prefs, list/unread/markRead/markAllRead) called from
+  ticketService actions; header `NotificationBell` + `/app/notifications` feed +
+  nav item. `reportsService.getSummary(teamId?)`; shared `Dashboard` for
+  `/app/reports` (all) and `/app/supervisor` (team). **Charts are dependency-free
+  CSS bars** (see decision M9.2) — no Recharts added.
 
 ## M10 — State coverage (S–M)
 

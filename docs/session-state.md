@@ -7,12 +7,12 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–8 implemented and passing all gates.** A standalone HeyQ app with
+**Milestones 1–9 implemented and passing all gates.** A standalone HeyQ app with
 the QuadX theme + light/dark, full route tree + role gating, the **public help
 center**, **ticket submission + requester portal**, the **agent workspace**,
-**triage**, **KB administration**, and **admin config** (agents, teams, routing,
-SLA, taxonomy — changes flow downstream). The approved source of truth is
-[`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+**triage**, **KB administration**, **admin config**, and **notifications +
+reporting** (in-app feed with email markers; operational dashboard). The approved
+source of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -134,12 +134,22 @@ SLA, taxonomy — changes flow downstream). The approved source of truth is
   tests **76/76** ✓, build ✓. (Browser check skipped — MCP classifier outage;
   service tests prove routing + SLA config flow downstream.)
 
+## Done (Milestone 9)
+
+- `Notification` model + seed; `notificationService` (`emit` w/ dedup + mute
+  prefs, list/unread/markRead/markAllRead) wired into ticketService actions
+  (requester reply, agent reply, assign, escalate, resolve).
+- `reportsService.getSummary(teamId?)`; shared `Dashboard` (`/app/reports` all,
+  `/app/supervisor` team). Dependency-free CSS bar charts + stat tiles.
+- Header `NotificationBell` (unread badge), `/app/notifications` feed page with
+  mute toggle + mark-read, Notifications nav item.
+- **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
+  tests **85/85** ✓, build ✓. Browser-verified (dashboard counters/charts; feed).
+
 ## Next up
 
-**Milestone 9 — Simulated notifications & reporting** (see
-[`roadmap.md`](roadmap.md)): in-app notification feed + "email sent" markers +
-prefs/dedup; operational dashboard (counters + charts). Likely adds a charts dep
-(Recharts) if justified.
+**Milestone 10 — State coverage** (see [`roadmap.md`](roadmap.md)): empty,
+loading, success, error, and validation states across all lists/details/forms.
 
 ## Open questions (non-blocking for M1)
 
