@@ -24,7 +24,7 @@ but do **not** block foundation work.
 | 8 | Agent, team, queue & taxonomy administration ✅ **done** | M | 6 |
 | 9 | Simulated notifications & reporting ✅ **done** | M | 6 |
 | 10 | State coverage ✅ **done** | S–M | 3–9 |
-| 11 | Light/dark, responsive, a11y & interaction QA | M | 1–10 |
+| 11 | Light/dark, responsive, a11y & interaction QA ✅ **done** | M | 1–10 |
 | 12 | Frontend approval & backend-readiness assessment | S | 1–11 |
 
 ---
@@ -195,14 +195,18 @@ but do **not** block foundation work.
   portal, dashboard, notifications, KB admin). Loading/empty/validation/success
   already existed from M3–M9.
 
-## M11 — Light/dark, responsive, accessibility & interaction QA (M)
+## M11 — Light/dark, responsive, accessibility & interaction QA (M) — ✅ **done**
 
 - **Objective:** Polish & QA.
 - **Included:** Dual-mode audit, responsive breakpoints, keyboard/focus/
   screen-reader passes, per-role review pass, interaction QA.
 - **Exclusions:** New features.
 - **Dependencies:** M1–M10.
-- **Acceptance:** Passes a11y + responsive + dual-mode + per-role review.
+- **Acceptance:** ✅ Token audit (only an intentional modal scrim is non-token, so
+  dark mode is complete); browser-verified dark + mobile (375px) with **no
+  horizontal overflow** on the widest views; skip link + `main` landmark +
+  `aria-expanded` nav toggle + Escape-closes-sidebar. Per-role gating and
+  interactions covered by the suite. 3 a11y tests.
 - **Complexity:** M.
 
 ## M12 — Frontend approval & backend-readiness assessment (S)

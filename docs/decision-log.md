@@ -24,6 +24,14 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 11 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M11.1 | **Semantic tokens everywhere; the only literal color is the modal scrim (`bg-black/40`)** | A scrim reads correctly in both themes; everything else theme-switches via tokens, so dark mode is complete by construction. |
+| M11.2 | **Responsive strategy = stack + internal scroll** (tables in `overflow-x-auto`, panes collapse below `lg`) | No horizontal page overflow at mobile; verified on the widest views. |
+| M11.3 | **A11y: skip link, `main#main-content`, `aria-expanded`/`aria-controls` on the nav toggle, Escape-closes-sidebar** | Standard landmark + keyboard affordances on top of the existing focus-visible rings and labelled controls. |
+
 ## Milestone 10 implementation decisions
 
 | # | Decision | Rationale |

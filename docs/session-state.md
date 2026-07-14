@@ -7,12 +7,13 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–10 implemented and passing all gates.** A standalone HeyQ app —
+**Milestones 1–11 implemented and passing all gates.** A standalone HeyQ app —
 QuadX theme + light/dark, full route tree + role gating, public help center,
 ticket submission + requester portal, agent workspace, triage, KB admin, admin
-config, notifications + reporting, and **full state coverage** (loading / empty /
-error+retry / validation / success across every view). The approved source of
-truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+config, notifications + reporting, full state coverage, and **QA polish** (dark +
+mobile verified, a11y landmarks/keyboard). Only **M12** (approval &
+backend-readiness) remains. The approved source of truth is
+[`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -155,11 +156,20 @@ truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md
 - **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
   tests **87/87** ✓, build ✓.
 
+## Done (Milestone 11)
+
+- A11y: `SkipLink` + `main#main-content` in both layouts; `aria-expanded` /
+  `aria-controls` on the nav toggle; Escape closes the mobile sidebar.
+- Dual-mode audit: only the intentional modal scrim is non-token → dark mode
+  complete. Browser-verified dark + mobile (375px) with no horizontal overflow.
+- **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
+  tests **90/90** ✓, build ✓.
+
 ## Next up
 
-**Milestone 11 — Light/dark, responsive, a11y & interaction QA** (see
-[`roadmap.md`](roadmap.md)): dual-mode audit, responsive breakpoints,
-keyboard/focus/screen-reader passes, per-role review.
+**Milestone 12 — Frontend approval & backend-readiness assessment** (see
+[`roadmap.md`](roadmap.md)): document the API contracts/seams and a backend
+productionization readiness note. Documentation-only.
 
 ## Open questions (non-blocking for M1)
 
