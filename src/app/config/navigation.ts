@@ -2,6 +2,7 @@ import {
   IconAdjustments,
   IconArchive,
   IconArrowUp,
+  IconBell,
   IconBook,
   IconBookmark,
   IconCategory,
@@ -50,6 +51,7 @@ export const APP_NAV: NavSection[] = [
       { label: 'SLA At-Risk', to: '/app/sla', icon: IconClock, roles: AGENT_ROLES },
       { label: 'Search', to: '/app/search', icon: IconSearch, roles: AGENT_ROLES },
       { label: 'Saved Views', to: '/app/views', icon: IconBookmark, roles: AGENT_ROLES },
+      { label: 'Notifications', to: '/app/notifications', icon: IconBell, roles: AGENT_ROLES },
     ],
   },
   {

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Button } from '../ui/Button';
 import { ThemeToggle } from '../ThemeToggle';
 import { IdentitySwitcher } from '../IdentitySwitcher';
+import { NotificationBell } from '../NotificationBell';
 import { BrandControl } from './BrandControl';
 
 interface HeaderProps {
@@ -40,6 +41,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
       <div className="ml-auto flex items-center gap-2">
         <IdentitySwitcher />
+        {onToggleSidebar && <NotificationBell />}
         <ThemeToggle />
       </div>
     </header>

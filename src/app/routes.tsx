@@ -20,6 +20,8 @@ import {
   UnassignedQueue,
 } from './pages/app/queues';
 import { TicketDetail } from './pages/app/TicketDetail';
+import { Dashboard } from './pages/app/Dashboard';
+import { NotificationsPage } from './pages/app/NotificationsPage';
 import { KbAdminList } from './pages/admin/KbAdminList';
 import { KbArticleEditor } from './pages/admin/KbArticleEditor';
 import { AgentsAdmin } from './pages/admin/AgentsAdmin';
@@ -67,8 +69,9 @@ export const routes: RouteObject[] = [
       { path: 'tickets/:id', element: guard(AGENT_ROLES, <TicketDetail />) },
       { path: 'search', element: guard(AGENT_ROLES, <AgentSearch />) },
       { path: 'views', element: guard(AGENT_ROLES, <SavedViews />) },
-      { path: 'supervisor', element: guard(LEAD_ROLES, ph('Team Dashboard', 'Workload and SLA compliance.', 'M9')) },
-      { path: 'reports', element: guard(LEAD_ROLES, ph('Reports', 'Operational reports.', 'M9')) },
+      { path: 'notifications', element: guard(AGENT_ROLES, <NotificationsPage />) },
+      { path: 'supervisor', element: guard(LEAD_ROLES, <Dashboard scope="team" />) },
+      { path: 'reports', element: guard(LEAD_ROLES, <Dashboard scope="all" />) },
     ],
   },
   {
