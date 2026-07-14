@@ -5,13 +5,21 @@ import {
   claimTicket,
   deescalateTicket,
   escalateTicket,
+  holdTicket,
   reclassifyTicket,
+  resumeTicket,
 } from '../../services/ticketService';
 import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
 import {
+  CONCERN_TYPES,
+  CONCERN_TYPE_LABELS,
   ESCALATION_REASON_LABELS,
+  HOLD_REASONS,
+  HOLD_REASON_LABELS,
+  type ConcernType,
   type EscalationReason,
+  type HoldReason,
   type TicketDetailView,
   type TicketPriority,
 } from '../../models/ticket';
@@ -21,7 +29,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Textarea } from '../ui/Textarea';
 
-const PRIORITIES: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
+const PRIORITIES: TicketPriority[] = ['normal', 'high', 'urgent'];
+const PRIORITY_LABELS: Record<TicketPriority, string> = { normal: 'Normal', high: 'High', urgent: 'Urgent' };
 
 /** Assignment, classification, and escalation controls for the detail right pane. */
 export function TicketActions({
@@ -43,13 +52,17 @@ export function TicketActions({
   const reclassify = useMutation(reclassifyTicket);
   const escalate = useMutation(escalateTicket);
   const deescalate = useMutation(deescalateTicket);
+  const hold = useMutation(holdTicket);
+  const resume = useMutation(resumeTicket);
 
   const [assignee, setAssignee] = useState(ticket.assigneeId ?? '');
   const [categoryId, setCategoryId] = useState(ticket.categoryId);
   const [subcategoryId, setSubcategoryId] = useState(ticket.subcategoryId ?? '');
+  const [concernType, setConcernType] = useState<ConcernType | ''>(ticket.concernType ?? '');
   const [priority, setPriority] = useState<TicketPriority>(ticket.priority);
   const [reroute, setReroute] = useState(true);
 
+  const [holdReason, setHoldReason] = useState<HoldReason>(ticket.holdReason ?? 'waiting_requester');
   const [reason, setReason] = useState<EscalationReason>('needs_specialist');
   const [escNote, setEscNote] = useState('');
   const [escTeam, setEscTeam] = useState(ticket.teamId);
@@ -97,8 +110,13 @@ export function TicketActions({
               {subcategories.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           )}
+          {/* Concern Type — a SEPARATE field from category/subcategory (rule #16). */}
+          <Select aria-label="Concern type" value={concernType} onChange={(e) => setConcernType(e.target.value as ConcernType | '')}>
+            <option value="">— No concern type —</option>
+            {CONCERN_TYPES.map((c) => <option key={c} value={c}>{CONCERN_TYPE_LABELS[c]}</option>)}
+          </Select>
           <Select aria-label="Priority" value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)}>
-            {PRIORITIES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
+            {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>)}
           </Select>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <input type="checkbox" checked={reroute} onChange={(e) => setReroute(e.target.checked)} />
@@ -108,10 +126,39 @@ export function TicketActions({
             size="sm"
             variant="outline"
             disabled={reclassify.loading}
-            onClick={() => after(reclassify.mutate(ticket.id, agentId, { categoryId, subcategoryId, priority, reroute }))}
+            onClick={() => after(reclassify.mutate(ticket.id, agentId, { categoryId, subcategoryId, concernType: concernType || undefined, priority, reroute }))}
           >
             Update classification
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* On hold — a status with a reason, replacing the old Pending Requester
+          status. The reason is what makes the hold actionable later. */}
+      <Card>
+        <CardHeader><CardTitle>Hold</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm">
+          {ticket.status === 'on_hold' ? (
+            <>
+              <Alert variant="warning">
+                On hold — {HOLD_REASON_LABELS[ticket.holdReason ?? 'other']}. The resolution clock is paused
+                only while we are blocked by someone outside the team.
+              </Alert>
+              <Button size="sm" variant="outline" disabled={resume.loading} onClick={() => after(resume.mutate(ticket.id, agentId))}>
+                Resume work
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">Blocked on someone else? Put it on hold and say who.</p>
+              <Select aria-label="Hold reason" value={holdReason} onChange={(e) => setHoldReason(e.target.value as HoldReason)}>
+                {HOLD_REASONS.map((r) => <option key={r} value={r}>{HOLD_REASON_LABELS[r]}</option>)}
+              </Select>
+              <Button size="sm" variant="outline" disabled={hold.loading} onClick={() => after(hold.mutate(ticket.id, agentId, holdReason))}>
+                Put on hold
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
 

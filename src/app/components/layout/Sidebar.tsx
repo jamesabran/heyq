@@ -49,8 +49,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   className={({ isActive }) =>
                     cn(
                       'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      // Selected state uses the calmer teal secondary accent (M14),
+                      // keeping strong brand red off ordinary navigation chrome.
                       isActive
-                        ? 'bg-primary/10 text-primary'
+                        ? 'bg-accent-brand/10 text-accent-brand'
                         : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     )
                   }

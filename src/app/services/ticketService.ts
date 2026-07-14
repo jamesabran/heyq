@@ -24,10 +24,14 @@ import {
   ticketState,
   tickets,
 } from '../data/tickets';
-import { agents, teams, ticketCategories } from '../data/catalog';
+import { agents, relatedTransactions, teams, ticketCategories } from '../data/catalog';
 import {
+  CONCERN_TYPE_LABELS,
   ESCALATION_REASON_LABELS,
+  HOLD_REASON_LABELS,
   STATUS_LABELS,
+  type ConcernType,
+  type HoldReason,
   type EscalationReason,
   type InternalNote,
   type MockAttachment,
@@ -52,7 +56,23 @@ const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? 'Unassi
 const categoryName = (id: string) => ticketCategories.find((c) => c.id === id)?.name ?? 'Uncategorized';
 const requesterName = (id: string) => requesters.find((r) => r.id === id)?.name ?? 'Requester';
 
-const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2 };
+
+// Default Concern Type by category (M15). Concern Type stays a SEPARATE field —
+// this only seeds a sensible starting value that agents can reclassify.
+const DEFAULT_CONCERN_BY_CATEGORY: Record<string, ConcernType> = {
+  'cat-general': 'general_inquiry',
+  'cat-account': 'account_concern',
+  'cat-disbursal': 'remittance_concern',
+  'cat-claims': 'missing_parcel',
+  'cat-delivery': 'delivery_delay',
+  'cat-pickup': 'pickup_issue',
+  'cat-payment': 'payment_issue',
+  'cat-cod': 'cod_concern',
+  'cat-returns': 'general_inquiry',
+  'cat-technical': 'general_inquiry',
+  'cat-other': 'general_inquiry',
+};
 
 export interface CreateTicketInput {
   name: string;
@@ -60,6 +80,7 @@ export interface CreateTicketInput {
   mobile?: string;
   categoryId: string;
   subcategoryId?: string;
+  concernType?: ConcernType;
   subject: string;
   description: string;
   trackingNumber?: string;
@@ -77,6 +98,16 @@ export interface CreateTicketResult {
 function nextReference(): string {
   ticketState.referenceSeq += 1;
   return `HQ-2026-${String(ticketState.referenceSeq).padStart(4, '0')}`;
+}
+
+/**
+ * Whether requester-facing communication should fire for a ticket. Non-internal
+ * tickets notify by default; internal tickets only when explicitly enabled
+ * (product rule #18).
+ */
+function requesterNotificationsOn(ticket: Ticket): boolean {
+  if (ticket.source === 'internal') return ticket.requesterNotificationsEnabled === true;
+  return ticket.requesterNotificationsEnabled !== false;
 }
 
 /** Create a ticket: guest requester + routed, unassigned ticket in Open status. */
@@ -107,6 +138,7 @@ export async function createTicket(input: CreateTicketInput): Promise<CreateTick
     description: input.description.trim(),
     categoryId: input.categoryId,
     subcategoryId: input.subcategoryId,
+    concernType: input.concernType ?? DEFAULT_CONCERN_BY_CATEGORY[input.categoryId],
     // New -> Open: auto-routed to a team's unassigned queue on submit.
     status: 'open',
     escalationState: 'none',
@@ -144,6 +176,115 @@ export async function createTicket(input: CreateTicketInput): Promise<CreateTick
   return { ticket: clone(ticket), reference, accessToken };
 }
 
+export interface CreateInternalTicketInput {
+  /** Submitting employee (agent id) — recorded in audit history. */
+  reporterId: string;
+  /** External customer, when there is one. Omit for a purely internal report. */
+  requesterName?: string;
+  requesterEmail?: string;
+  requesterMobile?: string;
+  /** Only meaningful when an external requester is attached (rule #18). */
+  requesterNotificationsEnabled?: boolean;
+  categoryId: string;
+  subcategoryId?: string;
+  concernType?: ConcernType;
+  subject: string;
+  description: string;
+  priority: TicketPriority;
+  /** Explicit owning team; falls back to the category's default team. */
+  teamId?: string;
+  assigneeId?: string;
+  relatedTransactionId?: string;
+  internalNote?: string;
+  attachments?: MockAttachment[];
+}
+
+/**
+ * Create an INTERNAL ticket (M16). Same native ticket model + seven-status
+ * lifecycle as any other ticket — only `source: 'internal'` and the
+ * communication config differ (no separate model — product rule #17). Requester
+ * notifications default OFF for purely internal tickets; they are on only when an
+ * external requester is attached AND the agent opts in (rule #18). The creator is
+ * recorded in the status/audit history.
+ */
+export async function createInternalTicket(input: CreateInternalTicketInput): Promise<CreateTicketResult> {
+  await simulateLatency();
+
+  const now = nowIso();
+  const hasExternalRequester = Boolean(input.requesterName?.trim());
+  const reporter = agents.find((a) => a.id === input.reporterId);
+
+  // Build the requester record. With an external customer we capture them as a
+  // guest; for a purely internal report we synthesize a non-guest "internal"
+  // requester so the ticket has a subject line without implying an outside party.
+  const requester: Requester = hasExternalRequester
+    ? {
+        id: makeId('req'), name: input.requesterName!.trim(),
+        email: input.requesterEmail?.trim() ?? '', mobile: input.requesterMobile?.trim() || undefined,
+        isGuest: true, brandId: BRAND,
+      }
+    : {
+        id: makeId('req'), name: `Internal report — ${reporter?.name ?? 'Staff'}`,
+        email: '', isGuest: false, brandId: BRAND,
+      };
+  requesters.push(requester);
+
+  // Notifications OFF by default; only ON when external + explicitly enabled.
+  const requesterNotificationsEnabled = hasExternalRequester
+    ? Boolean(input.requesterNotificationsEnabled)
+    : false;
+
+  const category = ticketCategories.find((c) => c.id === input.categoryId);
+  const teamId = input.teamId ?? category?.defaultTeamId ?? 'team-cs';
+  const reference = nextReference();
+
+  const ticket: Ticket = {
+    id: makeId('tkt'), reference, brandId: BRAND, requesterId: requester.id,
+    subject: input.subject.trim(), description: input.description.trim(),
+    categoryId: input.categoryId, subcategoryId: input.subcategoryId,
+    concernType: input.concernType ?? DEFAULT_CONCERN_BY_CATEGORY[input.categoryId],
+    status: 'open', escalationState: 'none', supportTier: 'L1', teamId,
+    priority: input.priority, source: 'internal',
+    reporterId: input.reporterId, requesterNotificationsEnabled,
+    assigneeId: input.assigneeId, relatedTransactionId: input.relatedTransactionId,
+    slaPolicyId: 'sla-standard', createdAt: now, updatedAt: now,
+  };
+  tickets.push(ticket);
+
+  // Audit: creation is attributed to the reporter (who created it).
+  statusEvents.push(
+    { id: makeId('se'), ticketId: ticket.id, actor: input.reporterId, toStatus: 'new', note: 'Internal ticket created', timestamp: now },
+    { id: makeId('se'), ticketId: ticket.id, actor: 'system', fromStatus: 'new', toStatus: 'open', timestamp: now },
+  );
+
+  // The concern description seeds the thread as a message from the reporter.
+  ticketMessages.push({
+    id: makeId('msg'), ticketId: ticket.id, authorType: 'agent', authorId: input.reporterId,
+    authorName: reporter?.name ?? 'Staff', body: input.description.trim(), channel: 'web', visibility: 'public', createdAt: now,
+  });
+
+  if (input.internalNote?.trim()) {
+    internalNotes.push({
+      id: makeId('note'), ticketId: ticket.id, agentId: input.reporterId,
+      agentName: reporter?.name ?? 'Staff', body: input.internalNote.trim(), createdAt: now,
+    });
+  }
+
+  if (input.assigneeId) {
+    assignments.push({
+      id: makeId('asg'), ticketId: ticket.id, actor: input.reporterId,
+      toAssigneeId: input.assigneeId, toTeamId: teamId, timestamp: now,
+    });
+    emit({ recipientId: input.assigneeId, event: 'ticket_assigned', title: `Assigned: ${ticket.subject}`, ticketId: ticket.id, ticketRef: ticket.reference });
+  }
+
+  // A portal access token is still issued (usable only if requester comms are on).
+  const accessToken = makeId('tok');
+  requesterAccess.push({ ticketId: ticket.id, accessToken, issuedAt: now });
+
+  return { ticket: clone(ticket), reference, accessToken };
+}
+
 export async function getTicketById(id: string): Promise<Ticket | null> {
   await simulateLatency();
   return clone(tickets.find((t) => t.id === id) ?? null);
@@ -163,10 +304,28 @@ function transition(ticket: Ticket, to: TicketStatus, actor: string, note?: stri
   const now = nowIso();
   statusEvents.push({ id: makeId('se'), ticketId: ticket.id, actor, fromStatus: ticket.status, toStatus: to, note, timestamp: now });
   ticket.status = to;
+  // A hold reason only means something while the ticket is on hold.
+  if (to !== 'on_hold') ticket.holdReason = undefined;
   ticket.updatedAt = now;
 }
 
-/** Requester posts a public reply. Pending Requester resumes work; Resolved reopens. */
+/**
+ * Reopen: an EVENT, not a status. A resolved/closed ticket returns to active work
+ * — `in_progress` if someone still owns it, otherwise `open` — and is stamped with
+ * `reopenedAt` so queues and the Overview can still single reopened work out.
+ */
+function reopen(ticket: Ticket, actor: string, note: string) {
+  const back: TicketStatus = ticket.assigneeId ? 'in_progress' : 'open';
+  transition(ticket, back, actor, note);
+  ticket.reopenedAt = ticket.updatedAt;
+  // The resolution is no longer the ticket's outcome.
+  ticket.resolvedAt = undefined;
+  ticket.resolutionType = undefined;
+}
+
+const isClosedOut = (t: Ticket) => t.status === 'resolved' || t.status === 'closed';
+
+/** Requester posts a public reply. A hold on them lifts; a closed-out ticket reopens. */
 export async function addRequesterMessage(ticketId: string, body: string): Promise<TicketMessage> {
   await simulateLatency();
   const ticket = tickets.find((t) => t.id === ticketId);
@@ -181,8 +340,12 @@ export async function addRequesterMessage(ticketId: string, body: string): Promi
   ticketMessages.push(message);
   ticket.updatedAt = now;
 
-  if (ticket.status === 'pending_requester') transition(ticket, 'in_progress', 'requester', 'Requester replied');
-  else if (ticket.status === 'resolved') transition(ticket, 'reopened', 'requester', 'Requester replied after resolution');
+  if (ticket.status === 'on_hold' && ticket.holdReason === 'waiting_requester') {
+    // The thing we were waiting for just arrived — the hold is over.
+    transition(ticket, 'in_progress', 'requester', 'Requester replied');
+  } else if (isClosedOut(ticket)) {
+    reopen(ticket, 'requester', 'Requester replied after resolution');
+  }
 
   if (ticket.assigneeId) {
     emit({ recipientId: ticket.assigneeId, event: 'requester_replied', title: `New reply from ${requester?.name ?? 'requester'}`, ticketId: ticket.id, ticketRef: ticket.reference });
@@ -195,9 +358,24 @@ export async function reopenTicket(ticketId: string): Promise<Ticket> {
   await simulateLatency();
   const ticket = tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
-  if (ticket.status === 'resolved' || ticket.status === 'closed') {
-    transition(ticket, 'reopened', 'requester', 'Reopened by requester');
-  }
+  if (isClosedOut(ticket)) reopen(ticket, 'requester', 'Reopened by requester');
+  return clone(ticket);
+}
+
+/** Agent puts a ticket on hold, naming what it is blocked on. */
+export async function holdTicket(ticketId: string, agentId: string, reason: HoldReason, note?: string): Promise<Ticket> {
+  await simulateLatency();
+  const ticket = requireTicket(ticketId);
+  ticket.holdReason = reason;
+  transition(ticket, 'on_hold', agentId, note ?? HOLD_REASON_LABELS[reason]);
+  return clone(ticket);
+}
+
+/** Agent takes a ticket off hold and resumes work on it. */
+export async function resumeTicket(ticketId: string, agentId: string): Promise<Ticket> {
+  await simulateLatency();
+  const ticket = requireTicket(ticketId);
+  if (ticket.status === 'on_hold') transition(ticket, 'in_progress', agentId, 'Resumed from hold');
   return clone(ticket);
 }
 
@@ -212,9 +390,20 @@ export interface ListTicketsParams {
   /** Signed-in agent's team; undefined = see all teams (e.g. admin). */
   viewerTeamId?: string;
   status?: TicketStatus;
+  priority?: TicketPriority;
+  /** Reopened is a flag, not a status — filter on it separately. */
+  reopened?: boolean;
+  /** Narrow to one requester's own tickets (the customer's Overview, M19). */
+  requesterId?: string;
   search?: string;
   sort?: 'updated' | 'created' | 'priority';
 }
+
+/** The GGX tracking number for a ticket's linked transaction, if it has one. */
+const trackingNumberFor = (ticket: Ticket): string | undefined =>
+  ticket.relatedTransactionId
+    ? relatedTransactions.find((t) => t.id === ticket.relatedTransactionId)?.trackingNumber
+    : undefined;
 
 function toListItem(ticket: Ticket): TicketListItem {
   return {
@@ -223,14 +412,36 @@ function toListItem(ticket: Ticket): TicketListItem {
     teamName: teamName(ticket.teamId),
     categoryName: categoryName(ticket.categoryId),
     assigneeName: agentName(ticket.assigneeId),
+    trackingNumber: trackingNumberFor(ticket),
     sla: computeSlaSummary(ticket),
   };
+}
+
+/**
+ * Everything one ticket can be matched on: reference, GGX tracking number, concern
+ * type, subject, and the requester's name and email. Partial matches count — an
+ * agent reading a tracking number off a chat types the middle group, not all 12
+ * characters.
+ */
+function searchCorpus(ticket: Ticket): string {
+  const requester = requesters.find((r) => r.id === ticket.requesterId);
+  return [
+    ticket.reference,
+    trackingNumberFor(ticket),
+    ticket.concernType ? CONCERN_TYPE_LABELS[ticket.concernType] : undefined,
+    ticket.subject,
+    requester?.name,
+    requester?.email,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 }
 
 /** Filtered, sorted ticket list for an agent queue. */
 export async function listTickets(params: ListTicketsParams = {}): Promise<TicketListItem[]> {
   await simulateLatency();
-  const { queue = 'all', viewerId, viewerTeamId, status, search, sort = 'updated' } = params;
+  const { queue = 'all', viewerId, viewerTeamId, status, priority, reopened, requesterId, search, sort = 'updated' } = params;
   const scoped = (t: Ticket) => viewerTeamId === undefined || t.teamId === viewerTeamId;
 
   let result = tickets.filter((t) => {
@@ -252,11 +463,12 @@ export async function listTickets(params: ListTicketsParams = {}): Promise<Ticke
   });
 
   if (status) result = result.filter((t) => t.status === status);
+  if (priority) result = result.filter((t) => t.priority === priority);
+  if (reopened) result = result.filter((t) => Boolean(t.reopenedAt));
+  if (requesterId) result = result.filter((t) => t.requesterId === requesterId);
   if (search?.trim()) {
     const q = search.trim().toLowerCase();
-    result = result.filter((t) =>
-      `${t.reference} ${t.subject} ${requesterName(t.requesterId)}`.toLowerCase().includes(q),
-    );
+    result = result.filter((t) => searchCorpus(t).includes(q));
   }
 
   result = [...result].sort((a, b) => {
@@ -355,7 +567,15 @@ export async function addAgentReply(ticketId: string, agentId: string, body: str
   if (!ticket.firstResponseAt) ticket.firstResponseAt = now;
   if (ticket.status === 'new' || ticket.status === 'open') transition(ticket, 'in_progress', agentId);
 
-  emit({ recipientId: agentId, event: 'reply_sent', title: `Reply emailed to requester on ${ticket.reference}`, ticketId: ticket.id, ticketRef: ticket.reference, emailed: true });
+  // Requester notifications are off for internal tickets unless explicitly enabled
+  // (rule #18); don't claim a reply was emailed when it wasn't.
+  const notify = requesterNotificationsOn(ticket);
+  emit({
+    recipientId: agentId,
+    event: 'reply_sent',
+    title: notify ? `Reply emailed to requester on ${ticket.reference}` : `Reply added to ${ticket.reference} (requester notifications off)`,
+    ticketId: ticket.id, ticketRef: ticket.reference, emailed: notify,
+  });
   return clone(message);
 }
 
@@ -386,7 +606,13 @@ export async function resolveTicket(
   ticket.resolutionType = resolutionType;
   ticket.resolvedAt = nowIso();
   transition(ticket, 'resolved', agentId, note);
-  emit({ recipientId: agentId, event: 'ticket_resolved', title: `Resolution emailed to requester on ${ticket.reference}`, ticketId: ticket.id, ticketRef: ticket.reference, emailed: true });
+  const notify = requesterNotificationsOn(ticket);
+  emit({
+    recipientId: agentId,
+    event: 'ticket_resolved',
+    title: notify ? `Resolution emailed to requester on ${ticket.reference}` : `Resolved ${ticket.reference} (requester notifications off)`,
+    ticketId: ticket.id, ticketRef: ticket.reference, emailed: notify,
+  });
   return clone(ticket);
 }
 
@@ -428,6 +654,7 @@ export async function claimTicket(ticketId: string, agentId: string): Promise<Ti
 export interface ReclassifyChanges {
   categoryId?: string;
   subcategoryId?: string;
+  concernType?: ConcernType;
   priority?: TicketPriority;
   /** When true and the category changed, re-route to the new category's default team. */
   reroute?: boolean;
@@ -441,6 +668,7 @@ export async function reclassifyTicket(ticketId: string, actor: string, changes:
 
   if (changes.categoryId !== undefined) ticket.categoryId = changes.categoryId;
   if (changes.subcategoryId !== undefined) ticket.subcategoryId = changes.subcategoryId || undefined;
+  if (changes.concernType !== undefined) ticket.concernType = changes.concernType;
   if (changes.priority !== undefined) ticket.priority = changes.priority;
 
   if (categoryChanged && changes.reroute) {
@@ -492,6 +720,20 @@ export async function escalateTicket(ticketId: string, actor: string, input: Esc
   const escalationRecipient = input.toAssigneeId ?? actor;
   emit({ recipientId: escalationRecipient, event: 'ticket_escalated', title: `Escalated: ${ticket.subject}`, ticketId: ticket.id, ticketRef: ticket.reference });
   // Note: status deliberately not changed.
+  return clone(ticket);
+}
+
+/**
+ * Link (or unlink) a GGX transaction to a ticket as STRUCTURED context (product
+ * rule #14) — stored as `relatedTransactionId`, never as description text. Records
+ * an assignment-independent status/audit note on the timeline is out of scope; a
+ * lightweight update to `updatedAt` is enough for the mock.
+ */
+export async function linkTransaction(ticketId: string, transactionId?: string): Promise<Ticket> {
+  await simulateLatency();
+  const ticket = requireTicket(ticketId);
+  ticket.relatedTransactionId = transactionId || undefined;
+  ticket.updatedAt = nowIso();
   return clone(ticket);
 }
 

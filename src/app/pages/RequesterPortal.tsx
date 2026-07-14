@@ -4,6 +4,7 @@ import { resolveAccessToken } from '../services/requesterService';
 import { addRequesterMessage, listMessages, reopenTicket } from '../services/ticketService';
 import { useQuery } from '../hooks/useQuery';
 import { useMutation } from '../hooks/useMutation';
+import { STATUS_LABELS } from '../models/ticket';
 import { formatDate } from '../lib/utils';
 import { Alert } from '../components/ui/Alert';
 import { Button } from '../components/ui/Button';
@@ -67,7 +68,7 @@ export function RequesterPortal() {
         <CardHeader className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-muted-foreground">{ticket.reference}</span>
-            <StatusChip status={ticket.status} />
+            <StatusChip status={ticket.status} holdReason={ticket.holdReason} />
           </div>
           <CardTitle className="text-2xl">{ticket.subject}</CardTitle>
         </CardHeader>
@@ -90,7 +91,8 @@ export function RequesterPortal() {
           {canReopen ? (
             <div className="flex flex-col gap-2">
               <Alert variant="success">
-                This ticket is {ticket.status}. Replying or reopening will bring it back to our team.
+                This ticket is {STATUS_LABELS[ticket.status].toLowerCase()}. Replying or reopening will bring it
+                back to our team.
               </Alert>
               <div className="flex justify-end">
                 <Button variant="outline" onClick={onReopen} disabled={reopen.loading}>

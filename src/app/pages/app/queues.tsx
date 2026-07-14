@@ -34,11 +34,15 @@ export function AgentSearch() {
 }
 
 const PRESET_VIEWS = [
-  { to: '/app', label: 'My Queue', desc: 'Assigned to me' },
+  { to: '/app/mine', label: 'My Queue', desc: 'Assigned to me' },
   { to: '/app/team', label: 'Team Tickets', desc: "My team's queue" },
   { to: '/app/unassigned', label: 'Unassigned', desc: 'Waiting to be claimed' },
   { to: '/app/escalated', label: 'Escalated', desc: 'By escalation state' },
   { to: '/app/sla', label: 'SLA At-Risk', desc: 'At risk or breached' },
+  // Reopened is a flag, not a status, so it has no place in the status filter —
+  // this is its entry point outside the Overview counter.
+  { to: '/app/team?reopened=1', label: 'Reopened', desc: 'Came back after resolution' },
+  { to: '/app/team?status=on_hold', label: 'On Hold', desc: 'Blocked, with a reason' },
 ];
 
 export function SavedViews() {

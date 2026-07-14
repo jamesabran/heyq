@@ -24,6 +24,57 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Phase 2 planning decisions (M13–M16 built; M17–M18 planned)
+
+Direction for the post-MVP phase. D19–D24 are **implemented** in the frontend/mock
+milestones (M13–M16); D25 (backend) stays planned. See [`roadmap.md`](roadmap.md)
+M13–M18 and §21 of the plan.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D19 | **GGX transaction context renders inline in the ticket detail's left pane** via an expanded typed `RelatedTransaction`, behind `transactionService` | Reduces agents switching to a separate GGX system; keeps the data behind the existing typed-service seam so real GGX plugs in later without frontend redesign. |
+| D20 | **Ticket status, shipment/delivery status, and payment/remittance status are three independent dimensions** | A support-status change must never mutate shipment or payment state; conflating them would repeat the flat-model debt D4/D5 warns against. |
+| D21 | **Sender/recipient PII is masked at the service boundary** | Masking is a data-contract concern, not a per-view afterthought; the future real API must uphold it too. |
+| D22 | **Concern Type is a new, separate `concernType` field** — not a merge of category/status/priority/etc. | Fast triage descriptor for the queue table; keeping it separate preserves the classification discipline of D5/rule #1. |
+| D23 | **Internal tickets reuse the native ticket model** with `source: 'internal'` + a communication config; **no separate model or lifecycle** | Same seven-status flow (D3); avoids a parallel model and the drift it causes. Requester notifications default off for internal tickets. |
+| D24 | **Theme refinement is a token-layer change** — darker/less-saturated primary (possible burgundy), a new secondary accent (blue/teal), and a broader status palette so statuses don't all rely on red | Fixes the too-bright `#E11900` without forking components (consistent with D11); keeps brand red distinct from `destructive` (D12). Final shade provisional pending visual review (A6). |
+| D25 | **Backend transaction lookup/sync (M17) is planned, and production GGX integration (M18) is built, strictly behind the service seam** | GGX transaction/payment/remittance systems are **integrations, never a runtime foundation** (D16/§17); HeyQ must still function if they are unavailable. Backend technology stays unselected (D17). |
+| D26 | **Role-based Overview dashboard (M19) becomes the default authenticated landing** at `/app`; My Queue moves to `/app/mine`; all other nav is retained | An actionable, attention-first summary is more useful as a landing than a single queue; keeping every existing route/nav entry avoids disruption. |
+| D27 | **The Overview is one role-branching page composed from existing services** (`reportsService` + `ticketService` + filters/components) — **no widget system, no per-user customization, no new data model or dependency** | Honors the guardrails and D18 (no overengineering); reuse keeps the dashboard consistent with the queues and scope-safe by construction (rule #19). |
+| D28 | **Dashboard summarizes and links; it never embeds the 3-pane workspace** — cards for counters, lists/tables for work, charts only for a real trend | Keeps `/app/tickets/:id` the single place complex handling happens (rule #20); prevents the dashboard from becoming a parallel workspace. |
+| D29 | **Requester Overview is conditional on a minimal authenticated `customer` home** scoped to their own tickets; otherwise deferred (portal stays the requester surface) | The MVP requester experience is the token portal, not an authenticated `/app` area; flagged as a product decision rather than silently building a new auth surface (§22.6). **Resolved at build (M19): confirmed — built.** The `customer` identity gets an `/app` home over its **own** tickets (`Identity.requesterId` → seeded requester), but rows still open through `/t/:token`; the portal stays the requester's ticket view and rule #6 is intact. |
+
+## Milestone 19 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M19.1 | **`overviewService` is a thin aggregator returning one of three discriminated shapes** (`tickets` \| `kb` \| `requester`), branching on role — not a per-role service or a widget config | One page, one seam. The role branch lives in the service (testable without React) while the page just renders the shape it is handed. Satisfies D27 with no new data model. |
+| M19.2 | **Agent queue filters moved into the URL** (`status`, `priority`, `q`, `sort`); added a `priority` filter to `listTickets` + the queue UI | "Every counter deep-links to the list it counts" (D28) is only true if a filtered queue is addressable. The filter state was component-local, so a counter could not link to it. Also makes any queue view shareable. |
+| M19.3 | **A new `AttentionTable`, rather than extending `TicketTable`** | The Overview row must carry GGX transaction context (tracking + shipment/payment + stale marker, M13) that the queue table deliberately does not show. Extending `TicketTable` with optional columns would have complicated every queue for one caller. |
+| M19.4 | **Overview lives in its own "Home" nav section**, not under "Agent Workspace" | A KB editor and a customer land there and work no queue; filing their home under an agent heading would misdescribe it. |
+| M19.5 | **Two seed adjustments**: `tkt-seed-8` reassigned to `req-seed-3` (so the `customer` demo has an awaiting-reply ticket) and a new `tkt-seed-15` resolved earlier on the simulated day | Without them two acceptance states are undemonstrable: the requester's "awaiting your reply" list, and a non-zero **Resolved today** counter (the simulated clock is fixed at 2026-07-14T09:00Z, and no seeded ticket resolved that day). |
+
+## Milestone 20 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| D30 | **The audit log is a read-only *view* over history the app already records** — no new audit writes, no new event types, no audit data model | Status events, assignments, escalations, internal notes, and KB revisions have been recorded since M6–M7 but were only visible inside one ticket's timeline. The gap was the viewer, not the data — so `auditService` derives the trail and stays correct automatically as new actions happen. |
+| D31 | **The trail records the action, never an internal note's body** | Product rule #5 keeps note content on the ticket, where the rules governing who may read it already live. An audit row says *"Internal note added"* and links to the ticket; it does not become a second, weaker-governed copy of note content. Asserted by test. |
+| D32 | **Actor names resolve via the agent roster, falling back to `ROLE_LABELS`** | The KB editor edits articles but is not a support agent, so she is absent from `agents`. Rather than add a non-agent to the agent roster (which would pollute assignee pickers and the agent admin screen), the audit layer degrades to the role label. |
+
+## Ticket-field & state-presentation rework (M21)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D33 | **"Pending Requester" → `on_hold` + `holdReason`** (waiting for requester / internal team / third party, scheduled follow-up, other) | Being blocked is one state; *who* we are blocked on is a property of it. The old status could only express one of the five real reasons, so agents had no way to say "waiting on the hub" except in a note. Migration: every seeded `pending_requester` ticket became `on_hold` + `waiting_requester`, preserving its exact meaning. |
+| D34 | **"Reopened" is an event/flag (`reopenedAt`), not a status** — a reopened ticket returns to `open`, or `in_progress` if it still has an owner | "Reopened" answered *what happened to this ticket*, while the other statuses answer *what state is it in now* — mixing the two meant a reopened ticket in active work still read as "Reopened" forever. Queues, counters, and the Overview now filter on the flag (`?reopened=1`), so nothing was lost. |
+| D35 | **The resolution SLA clock pauses on hold only for EXTERNAL blockers** (requester, third party, scheduled follow-up) — not `waiting_internal` | Preserves the old Pending Requester pause exactly, and makes the new reasons explicit. Pausing the clock when we are blocked on *our own* team would hide precisely the delay an SLA exists to surface. |
+| D36 | **Priority drops `low`** → Normal / High / Urgent | Nothing in the workflow keyed off `low`; it existed only as a fourth pill for the eye to decode. The one seeded low-priority ticket became `normal`. |
+| D37 | **Status, priority, and SLA are deliberately unequal in visual weight** — status always subtle; Normal priority is plain text and only Urgent is a red pill; On Track is muted text and only At Risk/Breached are badges | Three equally loud pills per row means none of them signals anything. The row is now calm by default and loud only when something genuinely needs action. Colour is never the sole signal — every state keeps its label. |
+| D38 | **Brand colour is removed from status.** In Progress is blue (`info`), not brand red; no status maps to `destructive` | Brand colour is for actions, nav, links, and selection. A ticket being worked on is not an error, and red must keep meaning urgent/breached/failed. Asserted by test. |
+| D39 | **One shared `TicketTable`; `AttentionTable` deleted.** The Overview passes an optional per-row transaction context to light up the extra shipment/payment columns | Two tables meant two definitions of how a status, priority, or SLA looks. Now the queues, saved views, search, and the Overview render ticket state through exactly one component, and the only difference is columns the queues don't need. |
+| D40 | **Tracking numbers use `XXXX-XXXX-XXXX` and are denormalized onto `TicketListItem`** | The number lives on `RelatedTransaction` (rule #14 — linkage stays structured), but every table needs it; resolving it per-row in the view layer would have meant a service call per row. It stays visibly distinct from a `HQ-2026-0003` ticket reference. |
+
 ## Milestone 11 implementation decisions
 
 | # | Decision | Rationale |

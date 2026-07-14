@@ -34,6 +34,12 @@ describe('classification', () => {
     expect(updated.teamId).toBe('team-tech');
     expect(updated.priority).toBe('urgent');
   });
+
+  it('updates Concern Type as a separate field without touching category', async () => {
+    const updated = await reclassifyTicket('tkt-seed-3', 'l1_agent', { concernType: 'address_correction' });
+    expect(updated.concernType).toBe('address_correction');
+    expect(updated.categoryId).toBe('cat-pickup'); // category unchanged
+  });
 });
 
 describe('escalation (separate from status)', () => {

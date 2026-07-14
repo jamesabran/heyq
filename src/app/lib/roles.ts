@@ -29,6 +29,18 @@ export const KB_ROLES: Role[] = ['kb_editor', 'admin'];
 export const ADMIN_ROLES: Role[] = ['admin'];
 export const AUDIT_ROLES: Role[] = ['team_lead', 'admin'];
 
+// Every signed-in role gets an Overview home (M19) — the content branches by
+// role, so a KB editor and a customer land on their own scoped summary rather
+// than an agent queue. Guests keep the public help centre / token portal.
+export const OVERVIEW_ROLES: Role[] = [
+  'customer',
+  'l1_agent',
+  'l2_specialist',
+  'team_lead',
+  'kb_editor',
+  'admin',
+];
+
 export function hasRole(role: Role, allowed: Role[]): boolean {
   return allowed.includes(role);
 }

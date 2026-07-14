@@ -535,6 +535,261 @@ Functional brand switching (GGX, SC, and other QuadX brands), brand-scoped data 
 
 ---
 
+## 21. Post-MVP Phase 2 — next-phase enhancements (planned, not built)
+
+The twelve-milestone MVP (§13) is complete and awaiting stakeholder sign-off
+(§14, [`backend-readiness.md`](backend-readiness.md)). **Phase 2** is the first
+planned phase **after MVP acceptance**. It sharpens the prototype into a
+review-ready operational tool and stages the first real GGX data path — while
+preserving every architectural rule in §17–§20 and the Appendix. Nothing here is
+built until the MVP is accepted; this section is planning only.
+
+Phase 2 is **still frontend-first**: items 1–4 extend the mock prototype; items
+5–6 are backend **planning and integration**, sequenced after the frontend work
+and after the MVP's backend-readiness gate. HeyQ remains a **standalone
+platform**; GGX transaction/payment/remittance systems are **integrations behind
+typed async services**, never a runtime foundation.
+
+### 21.1 GGX transaction context inside tickets
+
+Reduce the need for agents to open a separate GGX system when a ticket concerns a
+shipment. When a ticket is linked to a GoGo Xpress transaction, the agent ticket
+view (left "context" pane, §10) shows available transaction details inline:
+
+- Tracking number; delivery/shipment status; origin and destination.
+- Sender and recipient details, **with appropriate masking**.
+- Booking, pickup, delivery, and latest-movement dates.
+- Shipping fee and applicable charges; payment method; payment status.
+- COD amount and remittance status, when applicable.
+- Delivery exceptions, failed attempts, returns, or cancellation details.
+- **Data source** and **last-updated timestamp**.
+
+**Linkage sources** (how a ticket acquires a transaction reference): a report
+initiated from a GGX transaction; a tracking number supplied through the contact
+form; a tracking number manually entered/searched by an agent; or an integration
+that already supplies a transaction ID. The reference is stored as **structured
+ticket context** (`relatedTransactionId` + a typed `RelatedTransaction`), not as
+free text in the description.
+
+**Separate states — never conflated:** support **ticket status**, **shipment /
+delivery status**, and **payment / remittance status** are three independent
+dimensions. Changing the support ticket status must never change shipment or
+payment status (see [`product-rules.md`](product-rules.md)).
+
+**UI/data states to design:** loading transaction info; invalid/unmatched
+tracking number; transaction unavailable; stale data (with the last-updated
+timestamp); manual refresh; permission/ownership mismatch; and multiple possible
+matches (disambiguation). All are simulated in the mock layer for the prototype.
+
+**Realistic sample data & scenarios** (seed the mock so the workflow demonstrates
+properly): parcel marked delivered but not received; missed/failed pickup;
+shipment with no recent movement; incorrect COD amount; COD collected but not yet
+remitted; failed delivery with an unclear reason; returned parcel or disputed
+return fee; payment completed but booking not created; incorrect recipient
+address; damaged or missing parcel.
+
+### 21.2 Theme & visual-hierarchy refinement
+
+The provisional QuadX red `#E11900` (A6, [`decision-log.md`](decision-log.md)
+M1.1) reads as too bright and visually overwhelming. Phase 2 runs a **theme
+review** before finalizing the palette. Principles:
+
+- Keep red as a recognizable **GGX brand accent**, not the dominant interface
+  color; minimize how many red elements are visible at once.
+- Test a **slightly darker, less saturated** primary red (a possible direction: a
+  deeper brand red or **burgundy** for primary branding). Final shade remains
+  provisional until reviewed visually.
+- **Reserve strong red** primarily for errors, destructive actions, urgent SLA
+  breaches, and critical exceptions.
+- Use **neutral colors** for surfaces, navigation, tables, and ordinary controls.
+- Introduce a **calmer secondary accent** (blue or teal) for standard actions,
+  links, selected states, and informational elements.
+- Ensure delivery, payment, ticket, and SLA statuses **do not all rely on red** —
+  spread them across a status color scale.
+- Validate **contrast, dark mode, accessibility, and visual hierarchy** before
+  finalizing. Detail in [`design-system-strategy.md`](design-system-strategy.md).
+
+This stays a **token-layer** change (D11): adjust `--primary`, add a secondary
+accent token, and broaden the status palette — **no component fork**.
+
+### 21.3 Concern Type visibility in ticket queues
+
+Add a visible **Concern Type** column to agent ticket tables so agents grasp the
+issue before opening a ticket and can prioritize quick wins. Concern Type is a
+**controlled, human-readable triage descriptor**, e.g.: Delivery delay, Pickup
+issue, Missing parcel, Damaged parcel, COD concern, Remittance concern, Payment
+issue, Booking issue, Address correction, Account concern, General inquiry.
+
+Concern Type is a **new, separate field** — distinct from category, subcategory,
+ticket status, priority, escalation state, and assigned team. It does **not**
+collapse those fields into a generic "type"; it is one additional descriptor
+alongside them (extends the classification model in §4 and product rule #1).
+Seed tickets get realistic, immediately understandable Concern Type values.
+**Responsive:** on smaller screens Concern Type may surface in the primary ticket
+summary rather than being hidden entirely.
+
+### 21.4 Internal ticket creation
+
+Add an **Add Ticket / New Ticket** action to the agent ticket list so agents can
+log concerns that do not arrive through the requester form: internal operational
+reports, phone calls, walk-in/offline concerns, agent-discovered issues,
+escalations from another internal team, monitoring/system incidents, and other
+out-of-band reports.
+
+The creation flow supports: **ticket source** (including an `Internal` source);
+**reporter / submitting employee**; **requester details** (when there is an
+external customer); **Concern Type**; **category and subcategory**;
+**description**; **priority**; **team and assignee**; **optional tracking number
+/ GGX transaction link**; **internal notes**; **attachments**; and **audit
+history showing who created the ticket**.
+
+Rules: internal tickets follow the **standard seven-status lifecycle** (§6) — no
+separate model or lifecycle. **Requester notifications are disabled by default**
+for purely internal tickets; if an external requester is added, the agent
+**explicitly chooses** whether requester communication is enabled. Use the **same
+native HeyQ ticket model** with a different `source` and communication
+configuration — **do not introduce a separate ticket model** for internal
+reports.
+
+### 21.5 Backend transaction lookup & synchronization planning
+
+After the frontend items above, plan (not build) the first real GGX data path:
+how a backend resolves a tracking number / transaction ID to live transaction,
+payment, and remittance data; caching, staleness, and refresh semantics; the
+masking/permission model for sender/recipient PII; and reconciliation of the
+three independent statuses. This sits **behind the existing `RelatedTransaction`
+service seam** (§9b) so the frontend does not change. Technology stays deferred
+(§17).
+
+### 21.6 Production integration with GGX transaction, payment & remittance systems
+
+The final Phase 2 item: production integration replacing the simulated
+transaction prefill and mock `RelatedTransaction` with live GGX
+transaction/OMS, payment, and remittance systems (extends §18). These remain
+**integrations behind typed async services**, consistent with the standalone
+principle (§17) — GGX systems are never a permanent runtime foundation for HeyQ.
+
+### 21.7 Phase 2 roadmap placement (order after MVP acceptance)
+
+1. Realistic GGX sample data and transaction-context prototype (§21.1)
+2. Theme and visual-hierarchy refinement (§21.2)
+3. Concern Type visibility in ticket queues (§21.3)
+4. Internal ticket creation (§21.4)
+5. Backend transaction lookup and synchronization planning (§21.5)
+6. Production integration with GGX transaction, payment, and remittance systems
+   (§21.6)
+
+Items 1–4 are frontend/mock work; 5–6 are backend planning/integration and
+depend on the MVP's backend-readiness gate (§14). The milestone-level breakdown
+(M13–M18) is in [`roadmap.md`](roadmap.md).
+
+**Preserved architectural rules (unchanged in Phase 2):** HeyQ remains a
+standalone platform; external GGX systems are integrations, not runtime
+foundations; components access external data through typed async services;
+escalation stays separate from ticket status; internal notes never appear in
+requester-facing views; and no unnecessary abstractions, new dependencies, or
+implementation beyond this roadmap update.
+
+---
+
+## 22. Role-based Overview dashboard (Phase 2 addition — planned, not built)
+
+A **Role-based Overview dashboard** becomes the **default authenticated landing
+page** for every signed-in identity. Its purpose is an **actionable summary** of
+the tickets and issues inside the user's authorized role/team/permission scope —
+what needs attention first, useful counters, and one-click paths into the real
+work. It is planned as **M19** in [`roadmap.md`](roadmap.md); nothing is built in
+this task.
+
+### 22.1 Intent & scope
+
+- **Adapts by role** — a requester, L1/L2 agent, supervisor, KB editor, and admin
+  each see **different, scope-appropriate** content. Never the same dashboard for
+  everyone.
+- **Attention-first.** Surface items that need action: urgent tickets, SLA
+  at-risk/breached, unassigned **high-priority** tickets, escalations, reopened
+  tickets, and tickets awaiting action.
+- **Useful counters:** open, assigned, unassigned, urgent, SLA at-risk, SLA
+  breached, and resolved today — scoped to the viewer.
+- **Everything links.** Counters and list items deep-link to the relevant
+  **filtered ticket list** (existing queues/search with filters) or **ticket
+  detail**. The dashboard routes users to work; it doesn't replace it.
+- **Enough context to triage:** each actionable row shows **Concern Type** (M15),
+  **tracking number** and **shipment/payment status** (M13) when available,
+  **priority**, **SLA state**, **assignment**, and **latest activity**.
+- **Create access.** Where authorized, include a path to **create a ticket** (or
+  **internal ticket**, M16).
+- **Keep the full ticket detail page the primary workspace.** Complex ticket
+  handling stays on `/app/tickets/:id`; the dashboard summarizes and links, it
+  does not embed the 3-pane workspace.
+- **Retain direct navigation** to Tickets/Queues, Knowledge Base, Reports,
+  Notifications, and Administration (the existing sidebar is unchanged; Overview
+  is added at the top).
+
+### 22.2 Presentation rules
+
+- **Cards only for concise counters/summaries.** Actionable work is a **list or
+  table** (reuse the existing ticket table / list-item view models), so agents
+  can scan and click through.
+- **Charts only for a genuinely useful operational trend** (e.g. a supervisor's
+  SLA-breach or volume trend). No decorative charts. Reuse the existing
+  dependency-free CSS charts (decision M9.2) — no new charting dependency.
+
+### 22.3 Role-scoped content (illustrative)
+
+- **Requester (GGX Customer):** their own tickets with status/latest activity,
+  anything awaiting their reply, and a **Submit a ticket** action. (See the
+  auth-model note in §22.6.)
+- **L1/L2 agent:** *my* attention list (urgent / at-risk / awaiting action /
+  reopened assigned to me), my counters, my team's **unassigned high-priority**
+  pool, and **New ticket**.
+- **Supervisor (Team Lead):** team counters, SLA breaches/at-risk, unassigned
+  high-priority, escalations, reopened, plus one team trend chart; links into the
+  team queues and reports.
+- **Admin:** org-wide counters + the same attention lists unscoped, plus quick
+  links into Administration.
+- **KB editor:** a KB-focused summary (drafts, pending publish) + **New article**;
+  no ticket queues.
+
+### 22.4 States to cover
+
+Loading (skeleton), empty (no tickets in scope), error + retry, **stale data**
+(reuses the transaction freshness/`lastUpdatedAt` convention where transaction
+context is shown), **no-work** (nothing assigned/in scope), and **no-urgent-items**
+(work exists but nothing needs immediate attention — a positive "all clear"
+state, distinct from empty).
+
+### 22.5 Reuse & guardrails
+
+- **Reuse existing services, permissions, ticket models, filters, and UI
+  components** — `reportsService.getSummary(teamId?)` for counters,
+  `ticketService.listTickets({queue,filters,viewer…})` for attention lists,
+  `slaService`/`transactionService` for context, the existing `TicketTable` /
+  list-item view models, badges, cards, and role groupings (`lib/roles`). A thin
+  role-aware aggregator may compose these; **no new data model**.
+- **No widget system, no per-user customization, no role-specific dashboard
+  framework** — one `Overview` page that branches content by role/scope.
+- **No new dependencies** unless strictly necessary.
+- Preserve all existing architectural/product rules: standalone platform;
+  typed async services; escalation ≠ status; internal notes never requester-
+  facing; classification fields (incl. Concern Type) stay separate.
+
+### 22.6 Assumptions & open items
+
+- **Default-landing routing:** `/app` becomes the **Overview**; the current My
+  Queue moves to its own path (e.g. `/app/mine`) and stays in the nav. `/` and
+  `/app` index resolve to the Overview.
+- **Requester authenticated home:** the MVP's requester experience today is the
+  **token-based portal** (`/t/:token`), not an authenticated `/app` area. A
+  requester Overview therefore assumes the simulated **`customer`** identity gets
+  a minimal authenticated home scoped to **their own** tickets (via
+  `ticketService` filtered by `requesterId`). If that is out of scope, the
+  requester variant is deferred and guests/customers keep the portal — flagged
+  for a product decision.
+- **KB-editor landing:** `kb_editor` currently lands in `/admin/kb`; the Overview
+  gives them a KB-focused summary instead (their default `/app` becomes the KB
+  overview, or they continue to `/admin/kb` — a small routing decision).
+
 ## Appendix — planning principles applied
 
 - Frontend-first, high-fidelity mock MVP on the GGX Corporate stack; GGX SHADCN as the design system.

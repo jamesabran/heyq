@@ -2,12 +2,18 @@
  * slaService — computes simulated SLA state for a ticket against the simulated
  * clock. Placeholder targets (first-response 4h, resolution 48h) — real policies
  * + business-hours accuracy arrive in M8 (docs/sla-simulation.md). Elapsed time
- * is wall-clock-simplified here (no business-hours calendar yet); the resolution
- * clock PAUSES while a ticket is Pending Requester.
+ * is wall-clock-simplified here (no business-hours calendar yet).
+ *
+ * The resolution clock PAUSES while a ticket is on hold *waiting on someone
+ * outside the team* — the requester, a third party, or a scheduled follow-up.
+ * A ticket blocked on our own internal team keeps burning the clock: that delay
+ * is ours to own, and pausing it would hide exactly the problem SLAs exist to
+ * surface. (This preserves the old Pending Requester pause and makes the rest of
+ * the hold reasons explicit.)
  *
  * SLA state is independent of ticket status and escalation state.
  */
-import type { SlaState, SlaSummary, SlaTargetSummary, Ticket } from '../models/ticket';
+import type { HoldReason, SlaState, SlaSummary, SlaTargetSummary, Ticket } from '../models/ticket';
 import { simulatedNowMs } from '../lib/clock';
 import { slaConfig } from '../data/catalog';
 
@@ -30,6 +36,17 @@ function stateForElapsed(startIso: string, targetMs: number, doneAtIso?: string)
   return { state, dueAt };
 }
 
+/** Hold reasons where the delay is outside the team's control, so the clock stops. */
+const PAUSING_HOLD_REASONS: HoldReason[] = ['waiting_requester', 'waiting_third_party', 'scheduled_follow_up'];
+
+function pausesResolutionClock(ticket: Ticket): boolean {
+  return (
+    ticket.status === 'on_hold' &&
+    ticket.holdReason !== undefined &&
+    PAUSING_HOLD_REASONS.includes(ticket.holdReason)
+  );
+}
+
 /** Compute the first-response + resolution SLA summary for a ticket. */
 export function computeSlaSummary(ticket: Ticket): SlaSummary {
   const firstTarget = firstResponseTargetMs();
@@ -40,7 +57,7 @@ export function computeSlaSummary(ticket: Ticket): SlaSummary {
   let resolution: SlaTargetSummary;
   if (resolvedish) {
     resolution = stateForElapsed(ticket.createdAt, resolutionTarget, ticket.resolvedAt ?? ticket.updatedAt);
-  } else if (ticket.status === 'pending_requester') {
+  } else if (pausesResolutionClock(ticket)) {
     resolution = { state: 'paused', dueAt: new Date(new Date(ticket.createdAt).getTime() + resolutionTarget).toISOString() };
   } else {
     resolution = stateForElapsed(ticket.createdAt, resolutionTarget);

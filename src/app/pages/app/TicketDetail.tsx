@@ -10,6 +10,7 @@ import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
 import { useIdentity } from '../../contexts/IdentityContext';
 import {
+  CONCERN_TYPE_LABELS,
   RESOLUTION_LABELS,
   type ResolutionType,
 } from '../../models/ticket';
@@ -21,10 +22,12 @@ import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { StatusChip } from '../../components/ticket/StatusChip';
-import { PriorityBadge, SlaBadge } from '../../components/ticket/badges';
+import { EscalationIndicator, PriorityBadge, SlaBadge } from '../../components/ticket/badges';
+import { Badge } from '../../components/ui/Badge';
 import { AgentConversation } from '../../components/ticket/AgentConversation';
 import { TicketComposer } from '../../components/ticket/TicketComposer';
 import { TicketActions } from '../../components/ticket/TicketActions';
+import { TransactionPanel } from '../../components/ticket/TransactionPanel';
 import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 export function TicketDetail() {
@@ -67,13 +70,20 @@ export function TicketDetail() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Breadcrumb items={[{ label: 'My Queue', to: '/app' }, { label: ticket.reference }]} />
+      <Breadcrumb items={[{ label: 'My Queue', to: '/app/mine' }, { label: ticket.reference }]} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{ticket.subject}</h1>
           <p className="text-sm text-muted-foreground">{ticket.reference}</p>
         </div>
-        <StatusChip status={ticket.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Reopened is a flag, so it sits beside the status rather than replacing it. */}
+          {ticket.reopenedAt && (
+            <Badge variant="outline" title={`Reopened ${formatDate(ticket.reopenedAt)}`}>Reopened</Badge>
+          )}
+          <EscalationIndicator state={ticket.escalationState} />
+          <StatusChip status={ticket.status} holdReason={ticket.holdReason} />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_260px]">
@@ -92,6 +102,7 @@ export function TicketDetail() {
             <CardHeader><CardTitle>Classification</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-2 text-sm">
               <Row label="Concern" value={subcategoryName ? `${categoryName} · ${subcategoryName}` : categoryName} />
+              <Row label="Concern type" value={ticket.concernType ? CONCERN_TYPE_LABELS[ticket.concernType] : 'Unset'} />
               <Row label="Team" value={teamName} />
               <Row label="Assignee" value={assigneeName ?? 'Unassigned'} />
               <Row label="Tier" value={ticket.supportTier} />
@@ -101,8 +112,21 @@ export function TicketDetail() {
               </div>
               <Row label="Escalation" value={ticket.escalationState === 'none' ? 'Not escalated' : ticket.escalationState.replace(/_/g, ' ')} />
               <Row label="Source" value={ticket.source} />
+              {ticket.source === 'internal' && (
+                <Row
+                  label="Requester notifications"
+                  value={ticket.requesterNotificationsEnabled ? 'Enabled' : 'Off'}
+                />
+              )}
             </CardContent>
           </Card>
+
+          <TransactionPanel
+            ticketId={ticket.id}
+            relatedTransactionId={ticket.relatedTransactionId}
+            viewerTeamId={identity.teamId}
+            onChanged={refresh}
+          />
 
           <Card>
             <CardHeader><CardTitle>SLA</CardTitle></CardHeader>

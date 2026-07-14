@@ -20,6 +20,8 @@ import {
   UnassignedQueue,
 } from './pages/app/queues';
 import { TicketDetail } from './pages/app/TicketDetail';
+import { NewTicket } from './pages/app/NewTicket';
+import { Overview } from './pages/app/Overview';
 import { Dashboard } from './pages/app/Dashboard';
 import { NotificationsPage } from './pages/app/NotificationsPage';
 import { KbAdminList } from './pages/admin/KbAdminList';
@@ -29,8 +31,17 @@ import { TeamsAdmin } from './pages/admin/TeamsAdmin';
 import { RoutingAdmin } from './pages/admin/RoutingAdmin';
 import { SlaAdmin } from './pages/admin/SlaAdmin';
 import { CategoriesAdmin } from './pages/admin/CategoriesAdmin';
+import { AuditLog } from './pages/admin/AuditLog';
 import { RequireRole } from './components/RequireRole';
-import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from './lib/roles';
+import {
+  ADMIN_ROLES,
+  AGENT_ROLES,
+  AUDIT_ROLES,
+  KB_ROLES,
+  LEAD_ROLES,
+  OVERVIEW_ROLES,
+  type Role,
+} from './lib/roles';
 
 const ph = (title: string, subtitle: string, milestone: string): ReactNode => (
   <PlaceholderPage title={title} subtitle={subtitle} milestone={milestone} />
@@ -61,11 +72,15 @@ export const routes: RouteObject[] = [
     path: '/app',
     element: <AppLayout />,
     children: [
-      { index: true, element: guard(AGENT_ROLES, <MyQueue />) },
+      // The Overview is the default authenticated landing for every signed-in
+      // role (M19); My Queue keeps its own path in the nav.
+      { index: true, element: guard(OVERVIEW_ROLES, <Overview />) },
+      { path: 'mine', element: guard(AGENT_ROLES, <MyQueue />) },
       { path: 'team', element: guard(AGENT_ROLES, <TeamTickets />) },
       { path: 'unassigned', element: guard(AGENT_ROLES, <UnassignedQueue />) },
       { path: 'escalated', element: guard(AGENT_ROLES, <EscalatedQueue />) },
       { path: 'sla', element: guard(AGENT_ROLES, <SlaQueue />) },
+      { path: 'tickets/new', element: guard(AGENT_ROLES, <NewTicket />) },
       { path: 'tickets/:id', element: guard(AGENT_ROLES, <TicketDetail />) },
       { path: 'search', element: guard(AGENT_ROLES, <AgentSearch />) },
       { path: 'views', element: guard(AGENT_ROLES, <SavedViews />) },
@@ -93,7 +108,7 @@ export const routes: RouteObject[] = [
       { path: 'sla', element: guard(ADMIN_ROLES, <SlaAdmin />) },
       { path: 'categories', element: guard(ADMIN_ROLES, <CategoriesAdmin />) },
       { path: 'settings', element: guard(ADMIN_ROLES, ph('Settings', 'Brand, notification prefs, demo settings.', 'M8')) },
-      { path: 'audit', element: guard(AUDIT_ROLES, ph('Audit Log', 'Simulated activity / audit log.', 'M8')) },
+      { path: 'audit', element: guard(AUDIT_ROLES, <AuditLog />) },
     ],
   },
   { path: '*', element: <Navigate to="/app" replace /> },

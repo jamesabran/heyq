@@ -19,6 +19,23 @@ function renderApp(path: string) {
 }
 
 describe('ticket submission', () => {
+  it('rejects a malformed GGX tracking number before submitting', async () => {
+    const user = userEvent.setup();
+    renderApp('/contact');
+
+    await user.type(await screen.findByLabelText('Name'), 'Jamie Lopez');
+    await user.type(screen.getByLabelText('Email'), 'jamie@example.com');
+    // "Delivery" requires a tracking number, so the field appears.
+    await user.selectOptions(screen.getByLabelText('Concern type'), 'Delivery');
+    await user.type(screen.getByLabelText('Subject'), 'Parcel is late');
+    await user.type(screen.getByLabelText('Description'), 'It has not arrived.');
+    await user.type(screen.getByLabelText('Tracking number'), 'GGX-8842019');
+
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+
+    expect(await screen.findByText(/tracking numbers look like 1GGT-AYT1-TKK3/i)).toBeInTheDocument();
+  });
+
   it('submits a ticket and shows a reference with a secure portal link', async () => {
     const user = userEvent.setup();
     renderApp('/contact');

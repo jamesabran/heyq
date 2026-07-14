@@ -31,6 +31,7 @@ Legend: ✅ full · 🔸 scoped (own/team) · — none
 | Submit ticket | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | View own ticket (portal) | 🔸 link | 🔸 own | — | — | — | — | — |
 | Reply as requester | 🔸 link | 🔸 own | — | — | — | — | — |
+| View Overview dashboard (default landing) | — | 🔸 own | 🔸 own/team | 🔸 own/team | 🔸 team | 🔸 KB | ✅ all |
 | View queue/team tickets | — | — | 🔸 team | 🔸 team | 🔸 team | — | ✅ |
 | View all tickets | — | — | — | — | — | — | ✅ |
 | Reply / internal note | — | — | 🔸 assigned | 🔸 assigned | 🔸 team | — | ✅ |
@@ -57,3 +58,10 @@ Legend: ✅ full · 🔸 scoped (own/team) · — none
   internal-only surfaces outside scope.
 - Nav sections and per-ticket actions are hidden/disabled per this matrix; a
   per-role review pass is part of Milestone 11.
+- **Overview dashboard (M19)** renders **only content the viewer is authorized to
+  see** — it reuses the same role groupings (`lib/roles`) and service scoping
+  (`viewerId`/`viewerTeamId`, `reportsService.getSummary(teamId?)`) as the queues,
+  so it can never surface tickets, counters, or actions outside the role/team
+  scope. Requester content (if built) is limited to the requester's **own**
+  tickets; guests have no Overview. See §22 of the plan and
+  [`information-architecture.md`](information-architecture.md).

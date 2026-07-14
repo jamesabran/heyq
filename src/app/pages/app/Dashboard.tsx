@@ -25,10 +25,13 @@ export function Dashboard({ scope = 'all' }: { scope?: 'all' | 'team' }) {
     <div className="flex flex-col gap-6">
       <PageHeader title={title} subtitle={subtitle} />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      {/* The same counters the Overview uses, so a lead reading both sees one set
+          of numbers — including Reopened, which is a flag rather than a status. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
         <StatTile label="Total" value={s.total} />
         <StatTile label="Open" value={s.open} />
         <StatTile label="Unassigned" value={s.unassigned} />
+        <StatTile label="Reopened" value={s.reopened} tone="warning" />
         <StatTile label="Escalated" value={s.escalated} tone="warning" />
         <StatTile label="SLA at risk" value={s.slaAtRisk} tone="warning" />
         <StatTile label="SLA breached" value={s.slaBreached} tone="danger" />

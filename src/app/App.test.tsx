@@ -30,9 +30,9 @@ describe('application shell', () => {
     expect(screen.getByRole('combobox', { name: /simulated identity/i })).toBeInTheDocument();
   });
 
-  it('redirects the index route to the agent workspace', () => {
+  it('redirects the index route to the Overview home', async () => {
     renderApp('/', 'admin');
-    expect(screen.getByRole('heading', { name: /my queue/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /welcome, ella/i })).toBeInTheDocument();
   });
 });
 

@@ -22,6 +22,16 @@ describe('design tokens', () => {
     expect(tokens.color.light.destructive.toLowerCase()).toBe('#d4183d');
   });
 
+  it('defines a secondary brand accent distinct from the primary (M14)', () => {
+    for (const mode of ['light', 'dark'] as const) {
+      const c = tokens.color[mode];
+      expect(c['accent-brand']).toBeTruthy();
+      expect(c['accent-brand'].toLowerCase()).not.toEqual(c.primary.toLowerCase());
+    }
+    // The generated theme exposes it as a Tailwind color utility source.
+    expect(theme).toContain('--color-accent-brand:');
+  });
+
   it('has a generated theme.css with both :root and .dark blocks', () => {
     expect(theme).toMatch(/:root\s*\{/);
     expect(theme).toMatch(/\.dark\s*\{/);

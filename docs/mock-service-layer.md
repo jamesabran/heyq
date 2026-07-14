@@ -71,3 +71,56 @@ A real backend must slot in **behind these facades without frontend redesign**:
 **Not built:** microservices, event bus, dependency injection, repository
 pattern, generic workflow/rules engine. Workflow transitions are plain
 TypeScript functions.
+
+## Phase 2 service additions (planned — M13–M18)
+
+New seams built once Phase 2 lands (see [`roadmap.md`](roadmap.md) and §21). Each
+stays a typed async facade; GGX systems are an **integration behind the seam,
+never a runtime foundation** (§17). No component/hook redesign is required.
+
+- **`transactionService` (M13, backed by mock; M17/M18 backed by real GGX).**
+  Resolves a tracking number / transaction ID to a `RelatedTransaction` and
+  exposes a manual refresh. Models the invalid/unmatched, unavailable, stale,
+  permission/ownership-mismatch, and multiple-match outcomes. Sender/recipient
+  are masked at this boundary (product rule #15).
+
+  ```ts
+  /**
+   * transactionService — GGX transaction context facade.
+   * Future API endpoints (M17/M18):
+   *   GET /transactions/lookup?tracking=      → lookupByTracking (0/1/many)
+   *   GET /transactions/:id                    → getTransaction
+   *   POST /transactions/:id/refresh           → refresh (re-fetch live)
+   */
+  export async function lookupByTracking(t: string): Promise<TransactionMatch>;
+  ```
+
+- **`ticketService.createInternalTicket` (M16).** Creates a ticket with
+  `source: 'internal'`, a `reporterId`, optional external requester,
+  `concernType`, classification, priority, team/assignee, optional
+  `relatedTransactionId`, internal notes, and attachments — recording the creator
+  in the timeline/audit. `requesterNotificationsEnabled` defaults **false** for
+  internal tickets (rules 17–18). Same model, same seven-status lifecycle — **no
+  separate service or entity** for internal reports.
+  Future endpoint: `POST /tickets` (with `source=internal`).
+
+Planned-services table gains one row:
+
+| Service | Owns | Milestone |
+|---|---|---|
+| `transactionService` | Tracking→transaction lookup, refresh, masking, states | 13 (mock), 17–18 (real) |
+
+`concernType` is handled by the existing `ticketService`/`adminService` (a new
+controlled field, not a new service).
+
+- **Overview dashboard (M19) — no new data source.** The role-based Overview is
+  **composed from existing services**: `reportsService.getSummary(teamId?)` for
+  scoped counters, `ticketService.listTickets({queue, viewerId, viewerTeamId,
+  status, sort, search})` for the attention lists, and `slaService` /
+  `transactionService` for row context. If any aggregation is warranted, add a
+  **thin role-aware read** (e.g. `reportsService.getOverview(identity)` or a small
+  `overviewService`) that only calls the services above and returns existing view
+  models — **no new entity, no new persistence, no widget/DI/config layer**
+  (product rule #19; guardrail D18). Future endpoint, if introduced:
+  `GET /overview?scope=` — otherwise the dashboard just calls the existing
+  endpoints and assembles client-side.

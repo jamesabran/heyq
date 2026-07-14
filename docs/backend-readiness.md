@@ -61,7 +61,7 @@ access; separate classification fields; `brand` present.
 | In-memory notifications + dedup/prefs | Production notification delivery |
 | Client-side search/filter | Search infrastructure at scale |
 | Timeline/audit derived from state | Durable audit-log infrastructure |
-| `relatedTransaction` seed | OMS / transaction API integration |
+| `relatedTransaction` seed | OMS / transaction API integration (see Phase 2 M17/M18) |
 
 ## 5. Standalone & Zendesk-independence (settled)
 
@@ -76,6 +76,13 @@ the source-of-truth plan.)
 The backend framework and database are **not** selected in this phase. The
 organization's existing platform patterns may be evaluated as **one** reference
 during backend planning; this MVP commits to none.
+
+**Phase 2 note.** The first real backend data path is scoped as Phase 2 M17
+(transaction lookup & synchronization **planning**) and M18 (production GGX
+transaction/payment/remittance **integration**) — both strictly behind the
+`transactionService` / `RelatedTransaction` seam, so GGX systems remain an
+integration and never a runtime foundation. See [`roadmap.md`](roadmap.md) and
+§21 of the plan.
 
 ## 7. Readiness checklist
 

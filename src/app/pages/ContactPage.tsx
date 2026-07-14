@@ -5,7 +5,7 @@ import { listCategories, getTransactionById } from '../services/catalogService';
 import { createTicket, type CreateTicketResult } from '../services/ticketService';
 import { useQuery } from '../hooks/useQuery';
 import { useMutation } from '../hooks/useMutation';
-import type { MockAttachment } from '../models/ticket';
+import { isTrackingNumber, type MockAttachment } from '../models/ticket';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Alert } from '../components/ui/Alert';
 import { Button, buttonVariants } from '../components/ui/Button';
@@ -79,6 +79,11 @@ export function ContactPage() {
     if (!form.categoryId) next.categoryId = 'Choose a concern type.';
     if (!form.subject.trim()) next.subject = 'A subject is required.';
     if (!form.description.trim()) next.description = 'Please describe your concern.';
+    // Optional — but if they typed one, catch the typo here rather than routing a
+    // ticket we can never match to a shipment.
+    if (form.trackingNumber.trim() && !isTrackingNumber(form.trackingNumber)) {
+      next.trackingNumber = 'Tracking numbers look like 1GGT-AYT1-TKK3.';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -197,9 +202,14 @@ export function ContactPage() {
             </div>
 
             {(selectedCategory?.requiresTracking || fromTransaction) && (
-              <FormField label="Tracking number" hint="Helps us locate your shipment.">
+              <FormField
+                label="Tracking number"
+                hint="Helps us locate your shipment. Format: 1GGT-AYT1-TKK3."
+                error={errors.trackingNumber}
+              >
                 {(id) => (
                   <Input id={id} value={form.trackingNumber} readOnly={fromTransaction}
+                    placeholder="e.g. 1GGT-AYT1-TKK3"
                     onChange={(e) => setField('trackingNumber', e.target.value)} />
                 )}
               </FormField>

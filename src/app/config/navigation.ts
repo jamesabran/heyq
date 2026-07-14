@@ -18,7 +18,15 @@ import {
   IconUsers,
   IconUsersGroup,
 } from '@tabler/icons-react';
-import { ADMIN_ROLES, AGENT_ROLES, AUDIT_ROLES, KB_ROLES, LEAD_ROLES, type Role } from '../lib/roles';
+import {
+  ADMIN_ROLES,
+  AGENT_ROLES,
+  AUDIT_ROLES,
+  KB_ROLES,
+  LEAD_ROLES,
+  OVERVIEW_ROLES,
+  type Role,
+} from '../lib/roles';
 
 type TablerIcon = typeof IconInbox;
 
@@ -41,10 +49,19 @@ export interface NavSection {
 // same role groupings (lib/roles) so nav visibility and access never diverge.
 export const APP_NAV: NavSection[] = [
   {
+    // Its own section, not "Agent Workspace" — a KB editor and a customer land
+    // here too, and neither works an agent queue.
+    id: 'home',
+    label: 'Home',
+    items: [
+      { label: 'Overview', to: '/app', icon: IconLayoutDashboard, roles: OVERVIEW_ROLES, end: true },
+    ],
+  },
+  {
     id: 'workspace',
     label: 'Agent Workspace',
     items: [
-      { label: 'My Queue', to: '/app', icon: IconInbox, roles: AGENT_ROLES, end: true },
+      { label: 'My Queue', to: '/app/mine', icon: IconInbox, roles: AGENT_ROLES },
       { label: 'Team Tickets', to: '/app/team', icon: IconUsers, roles: AGENT_ROLES },
       { label: 'Unassigned', to: '/app/unassigned', icon: IconArchive, roles: AGENT_ROLES },
       { label: 'Escalated', to: '/app/escalated', icon: IconArrowUp, roles: AGENT_ROLES },

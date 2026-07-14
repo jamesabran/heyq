@@ -1,12 +1,17 @@
 # Roadmap
 
-Twelve frontend-first milestones. Sizing S/M/L is **relative effort**, not
-calendar time. Only **Milestone 1** has a detailed implementation plan (below);
-the rest are concise, implementation-sized entries. Derived from §13.
+Twelve frontend-first milestones for the MVP (**all done**), followed by a
+**Post-MVP Phase 2** (M13–M18, planned — not started). Sizing S/M/L is
+**relative effort**, not calendar time. Only **Milestone 1** has a detailed
+implementation plan (below); the rest are concise, implementation-sized entries.
+Derived from §13 and §21 of the source-of-truth plan.
 
 Milestones 1–3 can begin immediately. Taxonomy, SLA placeholder targets, and the
 QuadX red value (see [`session-state.md`](session-state.md)) feed milestones 3–9
 but do **not** block foundation work.
+
+**Phase 2 (M13–M18) is gated on MVP acceptance** — see
+[Post-MVP Phase 2](#post-mvp-phase-2--next-phase-enhancements-m13m18) below.
 
 ---
 
@@ -26,6 +31,25 @@ but do **not** block foundation work.
 | 10 | State coverage ✅ **done** | S–M | 3–9 |
 | 11 | Light/dark, responsive, a11y & interaction QA ✅ **done** | M | 1–10 |
 | 12 | Frontend approval & backend-readiness assessment ✅ **done** | S | 1–11 |
+
+### Post-MVP Phase 2 (planned — gated on MVP acceptance)
+
+| # | Milestone | Complexity | Depends on |
+|---|---|---|---|
+| 13 | GGX sample data & transaction-context prototype ✅ **built** | L | MVP accepted |
+| 14 | Theme & visual-hierarchy refinement ✅ **built** | M | MVP accepted |
+| 15 | Concern Type visibility in ticket queues ✅ **built** | S–M | MVP accepted |
+| 16 | Internal ticket creation ✅ **built** | M | 15 |
+| 17 | Backend transaction lookup & synchronization planning ✅ **plan written** | M | 13, backend gate |
+| 18 | Production integration — GGX transaction / payment / remittance ⏳ **planned** | L | 17 |
+| 19 | Role-based Overview dashboard (default landing) ✅ **built** | M | 13, 15, 16 |
+| 20 | Audit log viewer ✅ **built** | S–M | 6, 7 |
+| 21 | GGX tracking numbers, simplified states & badge hierarchy ✅ **built** | M | 13, 15, 19 |
+
+> **Note:** M13–M16 and M19 are frontend/mock work and have been **built ahead of
+> formal MVP sign-off** (all gates green — see as-built notes below). They remain
+> feature-flagged conceptually behind acceptance; M17–M18 are backend
+> planning/integration and stay **planned** (no backend exists to build against).
 
 ---
 
@@ -221,6 +245,281 @@ but do **not** block foundation work.
   standalone/Zendesk-independence; awaits stakeholder sign-off (the only
   remaining item — a decision, not a build).
 - **Complexity:** S.
+
+---
+
+# Post-MVP Phase 2 — next-phase enhancements (M13–M18)
+
+**Gated on MVP acceptance.** These milestones extend the accepted prototype and
+stage the first real GGX data path. Items M13–M16 are frontend/mock work; M17–M18
+are backend planning/integration and depend on the backend-readiness gate (M12).
+Full narrative in §21 of the
+[source-of-truth plan](quadx-helpdesk-first-pass-plan.md#21-post-mvp-phase-2--next-phase-enhancements-planned-not-built).
+Every architectural rule (standalone platform; GGX as integration not runtime
+foundation; typed async services; escalation ≠ status; internal notes never in
+requester views; no needless abstractions/dependencies) is preserved.
+
+## M13 — GGX sample data & transaction-context prototype (L) — ✅ **built**
+
+- **Objective:** Show GGX transaction details inline in the agent ticket view so
+  agents rarely need to open a separate GGX system.
+- **Included:** Expand `RelatedTransaction` (see
+  [`mock-data-model.md`](mock-data-model.md)) with tracking number, shipment/
+  delivery status, origin/destination, **masked** sender/recipient, booking/
+  pickup/delivery/latest-movement dates, shipping fee + charges, payment method,
+  payment status, COD amount + remittance status, exceptions/failed-attempts/
+  returns/cancellation, **data source + last-updated timestamp**. Render them in
+  the left context pane. Link via: report-from-transaction, contact-form tracking
+  number, agent manual entry/search, or integration-supplied transaction ID —
+  stored as **structured ticket context**, not description text. Realistic GGX
+  seed data + the ten seeded scenarios (§21.1). Simulated states: loading,
+  invalid/unmatched tracking number, transaction unavailable, stale data, manual
+  refresh, permission/ownership mismatch, multiple matches.
+- **Exclusions:** Any real GGX/OMS call (M17/M18); persistence.
+- **Dependencies:** MVP accepted.
+- **Acceptance:** A ticket linked to a transaction shows the full detail set with
+  masking, data source, and last-updated; ticket, shipment, and payment/
+  remittance statuses are **independent** (changing ticket status never changes
+  the others); all listed states render from mock data; the ten scenarios are
+  demonstrable.
+- **Complexity:** L.
+- **As-built notes:** Expanded `RelatedTransaction` (shipment/payment/remittance
+  enums, masked sender/recipient, dates, fees/charges, COD, exceptions, data
+  source + `lastUpdatedAt`); `transactionService` returns discriminated results
+  (`none`/`unavailable`/`permission_denied`/`found` + `stale`) plus
+  `lookupByTracking` (`invalid`/`multiple`/`found`); ownership via
+  `transactionAccess` map (owning team + admin can view). `TransactionPanel` in
+  the detail left pane renders all states, a manual **Refresh**, and a
+  tracking-lookup that links via `ticketService.linkTransaction` (structured
+  context). 11 seeded transactions cover all ten scenarios across tickets
+  `tkt-seed-1/2/3/6/7` + new `tkt-seed-9…14`. Shipment/payment/remittance badges
+  spread across the palette. 8 service tests.
+
+## M14 — Theme & visual-hierarchy refinement (M) — ✅ **built**
+
+- **Objective:** Replace the too-bright provisional red with a calmer, more
+  hierarchical palette while keeping red as a recognizable GGX accent.
+- **Included:** Theme review (see
+  [`design-system-strategy.md`](design-system-strategy.md)): test a darker/less
+  saturated primary red (possible burgundy direction); add a **secondary accent**
+  (blue or teal) for standard actions, links, selected states, and informational
+  elements; neutral surfaces/nav/tables/controls; reserve strong red for errors,
+  destructive actions, urgent SLA breaches, and critical exceptions; broaden the
+  status palette so delivery/payment/ticket/SLA statuses **don't all rely on
+  red**. Token-layer only — no component fork.
+- **Exclusions:** Component rewrites; new UI library.
+- **Dependencies:** MVP accepted (independent of M13/M15/M16).
+- **Acceptance:** Fewer simultaneous red elements; strong red reserved for
+  errors/destructive/critical; a secondary accent carries ordinary actions;
+  statuses read by more than color/red; contrast, dark mode, accessibility, and
+  visual hierarchy validated before the palette is finalized (final shade remains
+  provisional until reviewed visually, A6).
+- **Complexity:** M.
+- **As-built notes:** Token-layer only. Primary → deep **burgundy** (`#9E1B2E`
+  light / `#B5273A` dark), distinct from `destructive` (`#d4183d`, reserved for
+  errors). New **teal `accent-brand`** token pair (`#0f766e` / `#2dd4bf`) drives
+  selected nav + standard table links; brand red stays on primary buttons/brand
+  chip only. Status badges already spread across success/warning/info/destructive
+  so statuses don't all rely on red. `theme.css` regenerated; sync guard passes;
+  tokens test asserts the new accent. Final shade provisional (A6).
+
+## M15 — Concern Type visibility in ticket queues (S–M) — ✅ **built**
+
+- **Objective:** Let agents grasp and prioritize the issue before opening a
+  ticket.
+- **Included:** New **`concernType`** field (controlled list: Delivery delay,
+  Pickup issue, Missing parcel, Damaged parcel, COD concern, Remittance concern,
+  Payment issue, Booking issue, Address correction, Account concern, General
+  inquiry). Visible **Concern Type column** in agent ticket tables. Realistic
+  seed values. Responsive: on small screens it may appear in the primary ticket
+  summary rather than being hidden.
+- **Exclusions:** Merging it with category/subcategory/status/priority/
+  escalation/team (it stays a **separate** field).
+- **Dependencies:** MVP accepted.
+- **Acceptance:** Concern Type is a distinct field (product rule), shows as a
+  column at desktop width and in the ticket summary at mobile width, and carries
+  understandable seeded values across the queues.
+- **Complexity:** S–M.
+- **As-built notes:** New `concernType` field + `ConcernType` enum/labels;
+  seeded on all tickets; derived by category on public create; editable via the
+  classification controls (separate `Select`). `ConcernTypeBadge` (neutral
+  outline). Table shows a **Concern Type column** at `md+` and folds it into the
+  subject summary below `md`. Shown in the detail classification card. Tests in
+  `ticketService`/`escalation` specs.
+
+## M16 — Internal ticket creation (M) — ✅ **built**
+
+- **Objective:** Let agents create tickets for concerns that don't arrive through
+  the requester form.
+- **Included:** **Add Ticket / New Ticket** action on the agent ticket list. A
+  creation flow capturing: source (incl. `Internal`), reporter/submitting
+  employee, requester details (when external), Concern Type, category/subcategory,
+  description, priority, team/assignee, optional tracking number / GGX
+  transaction link, internal notes, attachments, and audit history of who created
+  it. Same native ticket model + seven-status lifecycle; a different `source` and
+  communication configuration — **no separate model**. Requester notifications
+  **off by default** for purely internal tickets; if an external requester is
+  added, the agent explicitly chooses whether requester communication is enabled.
+- **Exclusions:** A parallel internal-ticket data model; real notification
+  delivery.
+- **Dependencies:** M15 (Concern Type is a creation field).
+- **Acceptance:** An agent creates an internal ticket that follows the standard
+  lifecycle, records the creator in audit history, sends **no** requester
+  notification by default, and — only when an external requester is added and
+  communication is explicitly enabled — surfaces requester-facing messaging.
+- **Complexity:** M.
+- **As-built notes:** `Ticket` gains `reporterId` + `requesterNotificationsEnabled`;
+  `ticketService.createInternalTicket` (source `internal`, synth internal
+  requester when no external customer, creator in audit, optional assignee/note/
+  tracking-link). `requesterNotificationsOn` gates the "emailed to requester"
+  markers in reply/resolve. `NewTicket` page at `/app/tickets/new` (static route
+  before `:id`); **New ticket** action on My Queue / Team / Unassigned. Detail
+  shows the notifications state for internal tickets. 3 service tests.
+
+## M17 — Backend transaction lookup & synchronization planning (M) — ✅ **plan written**
+
+- **Objective:** Plan (not build) the first real GGX data path behind the
+  existing service seam.
+- **Included:** Design how a backend resolves a tracking number / transaction ID
+  to live transaction, payment, and remittance data; caching, staleness, and
+  refresh semantics; the masking/permission model for sender/recipient PII;
+  reconciliation of the three independent statuses; error/permission/multiple-
+  match handling. Sits behind the `RelatedTransaction` service seam so the
+  frontend is unchanged. Technology stays deferred (§17).
+- **Exclusions:** Any production build; backend technology selection.
+- **Dependencies:** M13; MVP backend-readiness gate (M12).
+- **Acceptance:** ✅ A written plan for transaction lookup + synchronization that
+  preserves the standalone principle and the typed-service seam —
+  [`transaction-integration-plan.md`](transaction-integration-plan.md).
+- **Complexity:** M.
+- **As-built notes:** Plan covers the seam mapping (mock→REST), lookup cardinality
+  (0/1/many), read-through caching + staleness + refresh, server-side masking +
+  ownership authz, three-status reconciliation via derived exceptions, and
+  graceful degradation. Written against the real M13 `transactionService`
+  contract so M18 is a drop-in reimplementation.
+
+## M18 — Production integration — GGX transaction / payment / remittance (L) — ⏳ **planned**
+
+- **Objective:** Replace simulated transaction data with live GGX systems.
+- **Included:** Production integration with GGX transaction/OMS, payment, and
+  remittance systems behind typed async services (extends §18); replaces the mock
+  `RelatedTransaction` and simulated prefill. GGX systems remain **integrations,
+  never a runtime foundation** for HeyQ.
+- **Exclusions:** Coupling HeyQ's domain model to GGX at runtime.
+- **Dependencies:** M17.
+- **Acceptance:** Live transaction/payment/remittance data flows through the
+  unchanged service seam; HeyQ still functions with the integration unavailable.
+- **Complexity:** L.
+
+## M19 — Role-based Overview dashboard (M) — ✅ **built**
+
+- **Objective:** A role-adaptive **Overview** as the default authenticated landing
+  page — an actionable summary of tickets/issues in the user's scope, routing
+  users into the real work rather than replacing it. Full narrative in §22 of the
+  [plan](quadx-helpdesk-first-pass-plan.md#22-role-based-overview-dashboard-phase-2-addition--planned-not-built).
+- **Included:** One `Overview` page whose content branches by role/scope
+  (requester / L1–L2 agent / supervisor / admin / KB editor). **Attention-first**
+  lists (urgent, SLA at-risk/breached, unassigned high-priority, escalations,
+  reopened, awaiting action) as **lists/tables**; scoped **counters** (open,
+  assigned, unassigned, urgent, SLA at-risk, SLA breached, resolved today) as
+  **cards** — every counter/row deep-links to a filtered queue/search or the
+  ticket detail. Rows show Concern Type, tracking number + shipment/payment status
+  (when available), priority, SLA state, assignee, and latest activity. A **charts
+  only for a useful trend** rule (reuse M9 CSS charts). **Create ticket / internal
+  ticket** access where authorized. Routing: `/app` → Overview; My Queue moves to
+  its own path and stays in the nav; the sidebar (Tickets/Queues, KB, Reports,
+  Notifications, Administration) is otherwise unchanged.
+- **Exclusions:** No widget system, no per-user customization, no role-specific
+  dashboard framework; no new data model, services, or dependencies (compose
+  `reportsService` + `ticketService` + existing filters/components); no moving the
+  3-pane ticket workspace into the dashboard.
+- **Dependencies:** M13 (transaction context), M15 (Concern Type), M16 (create
+  internal ticket) for the row context and create action; reuses M9
+  reports/charts.
+- **Acceptance:** ✅ Each simulated identity lands on a **different, relevant**
+  Overview from realistic GGX sample data; counters/lists link to the correct
+  filtered views/detail; loading, empty, error+retry, stale-data, no-work, and
+  **no-urgent-items** states are all covered; the full ticket detail remains the
+  primary workspace; direct nav to all areas is retained. 15 tests.
+- **Complexity:** M.
+- **As-built notes:** `overviewService` is a **thin aggregator** over
+  `reportsService` + `ticketService` + `requesterService` + `transactionService` +
+  `kbService` — no new data model, no widget system, no new dependency. It returns
+  one of three discriminated shapes (`tickets` | `kb` | `requester`) and branches
+  by role: **agent** (my attention list + my team's unassigned high-priority pool,
+  no chart), **supervisor** (team-scoped SLA/unassigned/escalations/reopened +
+  one team trend), **admin** (the same, org-wide, + a by-team trend), **KB editor**
+  (drafts/publish pipeline, no queues), **customer** (own tickets + awaiting-reply,
+  opening via `/t/:token` — never an agent surface). Counter **cards** and list
+  rows all deep-link; queue filters (`status`/`priority`/`q`/`sort`) moved into
+  the **URL** so `/app/mine?priority=urgent` is linkable. Rows use a new
+  `AttentionTable` (the queue's `TicketTable` carries no transaction columns)
+  showing Concern Type + tracking number + shipment/payment badges + a **Stale**
+  marker, with a page-level stale banner. Routing: `/app` → Overview (guarded by
+  new `OVERVIEW_ROLES`), My Queue → `/app/mine`, Overview in its own **Home** nav
+  section. Seed: `customer` identity mapped to requester `req-seed-3` (3 tickets,
+  one awaiting her reply, each with a secure link); added `tkt-seed-15` resolved
+  earlier on the simulated day so **Resolved today** is a live number.
+
+## M20 — Audit log viewer (S–M) — ✅ **built**
+
+- **Objective:** Turn the `/admin/audit` placeholder into the real, org-wide
+  activity trail. The app has recorded audit history since M6–M7 (status events,
+  assignments, escalations, internal notes, KB revisions); nothing surfaced it
+  outside a single ticket's timeline.
+- **Included:** `auditService` — a read-only aggregator unifying the five existing
+  histories into one chronological, filterable stream; the `/admin/audit` page
+  (filters: event type, actor, free-text search; rows deep-link to the ticket or
+  the article). Gated to `AUDIT_ROLES` (team lead + admin), which already existed.
+- **Exclusions:** No new audit *writes* and no new event types — if an action isn't
+  already recorded, this milestone does not start recording it. No export/retention/
+  tamper-evidence (production concerns, not mock ones).
+- **Dependencies:** M6 (assignment/escalation history), M7 (KB revisions).
+- **Acceptance:** ✅ A lead or admin sees every status change, assignment,
+  escalation, note, and article revision newest-first; filters narrow by type,
+  actor, and search; rows link back to the ticket/article; an L1 agent is blocked.
+  **Internal note bodies never appear** — the trail records that a note was added,
+  not what it said (rule #5). 10 tests.
+- **Complexity:** S–M.
+- **As-built notes:** No model or seed changes at all — the trail is derived
+  entirely from existing state, so a new escalation shows up in it immediately
+  (proven by test). Filters are URL-backed, matching the M19 queue convention.
+  Actor names resolve through the agent roster, falling back to `ROLE_LABELS` so
+  the KB editor (who is not an agent) reads as "KB Editor" rather than a raw id.
+
+## M21 — GGX tracking numbers, simplified states & badge hierarchy (M) — ✅ **built**
+
+- **Objective:** Make the ticket lists readable and the state model honest: show the
+  identifier customers actually quote (the GGX tracking number), cut the status set
+  down to what agents really distinguish, and stop status/priority/SLA shouting at
+  equal volume.
+- **Included:**
+  - **Tracking numbers** in `XXXX-XXXX-XXXX` form (rule #21), denormalized onto
+    `TicketListItem` so every list shows them; em dash on non-shipment tickets.
+  - **Statuses 7 → 6** (rule #3): `pending_requester` → `on_hold` + **`holdReason`**;
+    `reopened` → an **event flag** (`reopenedAt`). Escalation unchanged (rule #2).
+  - **Priority 4 → 3** (Low removed). **SLA** presents only On Track / At Risk /
+    Breached; `met` and `paused` remain internal states.
+  - **Semantic colour + badge hierarchy** (rules #23–24): brand colour carries no
+    state meaning, In Progress is blue, only Urgent/Breached are red, escalation is
+    a labelled indicator.
+  - **One shared `TicketTable`** across queues, saved views, search, and the Overview;
+    **search** extended to tracking number, concern type, and requester email.
+- **Exclusions:** No new search service, state layer, or token system; no new
+  dependencies. Existing components reused throughout.
+- **Dependencies:** M13 (transactions), M15 (Concern Type), M19 (Overview).
+- **Acceptance:** ✅ All seeded tracking numbers match the format and are unique;
+  full and partial tracking search work; the seed exercises all six statuses, both
+  hold-reason kinds, escalation, reopening, all priorities, and on-track/at-risk/
+  breached SLA; no status maps to brand or destructive colour. 149 tests.
+- **Complexity:** M.
+- **As-built notes:** `AttentionTable` was **deleted** — it was a second definition
+  of how ticket state looks. Every ticket row in the app now renders through one
+  component (D39). The SLA resolution clock pauses on hold **only for external
+  blockers** (D35) — a ticket blocked on our own team keeps burning the clock,
+  since pausing it would hide the very delay the SLA exists to surface. Reopened,
+  being a flag rather than a status, gets a `?reopened=1` URL filter (clearable
+  chip) plus a saved view, since it cannot live in the status select.
 
 ---
 

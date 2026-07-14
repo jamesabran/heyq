@@ -23,6 +23,7 @@ export interface ReportSummary {
   open: number; // not resolved/closed
   unassigned: number;
   escalated: number;
+  /** Reopened is a flag on the ticket, not a status — count the stamp. */
   reopened: number;
   slaBreached: number;
   slaAtRisk: number;
@@ -31,7 +32,8 @@ export interface ReportSummary {
   byTeam: CountBucket[];
 }
 
-const OPEN_STATUSES: TicketStatus[] = ['new', 'open', 'in_progress', 'pending_requester', 'reopened'];
+/** "Open" = not resolved/closed. Shared so overviewService can't drift from it. */
+export const OPEN_STATUSES: TicketStatus[] = ['new', 'open', 'in_progress', 'on_hold'];
 
 export async function getSummary(teamId?: string): Promise<ReportSummary> {
   await simulateLatency();
@@ -69,7 +71,7 @@ export async function getSummary(teamId?: string): Promise<ReportSummary> {
     open: scope.filter((t) => OPEN_STATUSES.includes(t.status)).length,
     unassigned: scope.filter((t) => !t.assigneeId).length,
     escalated: scope.filter((t) => t.escalationState !== 'none').length,
-    reopened: scope.filter((t) => t.status === 'reopened').length,
+    reopened: scope.filter((t) => Boolean(t.reopenedAt)).length,
     slaBreached,
     slaAtRisk,
     byStatus,

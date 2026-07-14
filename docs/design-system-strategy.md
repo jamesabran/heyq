@@ -69,6 +69,54 @@ Copy/vendor the GGX SHADCN `components/ui/*` set into HeyQ's `components/ui/`
 CVA conventions. Milestone 1 wires the minimum set needed for the app shell and
 validation page; the rest are added as milestones require them.
 
+## Phase 2 — theme & visual-hierarchy refinement (planned, M14)
+
+The provisional QuadX red `#E11900` (A6 / decision M1.1) reads as **too bright
+and visually overwhelming**. Phase 2 runs a **theme review** before the palette
+is finalized. This stays **token-layer only** — no component fork (D11).
+
+Principles for the review:
+
+- **Red is a brand accent, not the dominant UI color.** Minimize how many red
+  elements are visible at once.
+- **Test a darker, less saturated primary red** — a possible direction is a
+  deeper brand red or **burgundy** for primary branding. The final shade stays
+  provisional until reviewed visually.
+- **Reserve strong red** for errors, destructive actions, urgent SLA breaches,
+  and critical exceptions.
+- **Neutral colors** for surfaces, navigation, tables, and ordinary controls.
+- **Add a calmer secondary accent** (blue or teal) for standard actions, links,
+  selected states, and informational elements — likely a new `--accent` /
+  `--accent-foreground` token pair layered onto `tokens.json`.
+- **Broaden the status palette** so delivery, payment, ticket, and SLA statuses
+  **do not all rely on red** (a small status color scale keyed by meaning, not a
+  single hue).
+- Keep brand red **distinct from `--destructive`** (the standing rule above).
+- **Validate contrast, dark mode, accessibility, and visual hierarchy** in both
+  themes before finalizing.
+
+Token structure changes only (adjust `--primary`, add a secondary accent, extend
+status tokens); components already read these variables, so no rewrite is needed.
+See [`roadmap.md`](roadmap.md) M14 and §21.2 of the plan.
+
+## Overview dashboard component usage (planned, M19)
+
+The role-based Overview (§22 of the plan) composes **existing** components — no
+new primitives. Usage rules:
+
+- **Cards** (`Card`) only for concise **counters/summaries**; each counter is a
+  link into a filtered queue/search.
+- **Lists / tables** for **actionable work** — reuse `TicketTable` and the
+  existing list-item view models so rows carry Concern Type, tracking number +
+  shipment/payment status, priority, SLA state, assignee, and latest activity,
+  and link to the ticket detail.
+- **Charts** only for a genuine operational **trend**; reuse the dependency-free
+  CSS bar charts from M9 (decision M9.2) — **no new charting dependency**.
+- Cover loading (skeletons), empty, error+retry, **stale-data**, **no-work**, and
+  **no-urgent-items** states with the existing state components (`HelpStates`
+  loading/empty, `ErrorState`). See [`product-rules.md`](product-rules.md) rules
+  19–20.
+
 ## Explicitly not doing
 
 No custom design system, no component fork for theming, no bespoke token

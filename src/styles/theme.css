@@ -11,7 +11,7 @@
   --card-foreground: #171717;
   --popover: #ffffff;
   --popover-foreground: #171717;
-  --primary: #E11900;
+  --primary: #9E1B2E;
   --primary-foreground: #ffffff;
   --secondary: #f4f4f5;
   --secondary-foreground: #18181b;
@@ -19,24 +19,26 @@
   --muted-foreground: #6b7280;
   --accent: #f4f4f5;
   --accent-foreground: #18181b;
+  --accent-brand: #0f766e;
+  --accent-brand-foreground: #ffffff;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
   --border: #e5e7eb;
   --input: #e5e7eb;
-  --ring: #E11900;
-  --chart-1: #E11900;
-  --chart-2: #0088c9;
+  --ring: #9E1B2E;
+  --chart-1: #9E1B2E;
+  --chart-2: #0f766e;
   --chart-3: #16a34a;
   --chart-4: #d97706;
   --chart-5: #7c3aed;
   --sidebar: #fafafa;
   --sidebar-foreground: #171717;
-  --sidebar-primary: #E11900;
+  --sidebar-primary: #9E1B2E;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #f4f4f5;
   --sidebar-accent-foreground: #18181b;
   --sidebar-border: #e5e7eb;
-  --sidebar-ring: #E11900;
+  --sidebar-ring: #0f766e;
   --radius: 0.625rem;
 }
 
@@ -47,7 +49,7 @@
   --card-foreground: #fafafa;
   --popover: #151517;
   --popover-foreground: #fafafa;
-  --primary: #E11900;
+  --primary: #B5273A;
   --primary-foreground: #ffffff;
   --secondary: #26262a;
   --secondary-foreground: #fafafa;
@@ -55,24 +57,26 @@
   --muted-foreground: #a1a1aa;
   --accent: #26262a;
   --accent-foreground: #fafafa;
+  --accent-brand: #2dd4bf;
+  --accent-brand-foreground: #0b0b0c;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
   --border: #2a2a2e;
   --input: #2a2a2e;
-  --ring: #E11900;
-  --chart-1: #ff5a44;
-  --chart-2: #38bdf8;
+  --ring: #B5273A;
+  --chart-1: #B5273A;
+  --chart-2: #2dd4bf;
   --chart-3: #4ade80;
   --chart-4: #fbbf24;
   --chart-5: #a78bfa;
   --sidebar: #101012;
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #E11900;
+  --sidebar-primary: #B5273A;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #26262a;
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #2a2a2e;
-  --sidebar-ring: #E11900;
+  --sidebar-ring: #2dd4bf;
 }
 
 @theme inline {
@@ -91,6 +95,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-brand: var(--accent-brand);
+  --color-accent-brand-foreground: var(--accent-brand-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
