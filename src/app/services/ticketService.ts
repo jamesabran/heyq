@@ -42,6 +42,7 @@ import {
   type TimelineEvent,
 } from '../models/ticket';
 import { computeSlaSummary, isSlaAtRiskOrBreached } from './slaService';
+import { emit } from './notificationService';
 import { clone, makeId, nowIso, simulateLatency } from '../lib/mock';
 
 const BRAND = 'ggx';
@@ -183,6 +184,9 @@ export async function addRequesterMessage(ticketId: string, body: string): Promi
   if (ticket.status === 'pending_requester') transition(ticket, 'in_progress', 'requester', 'Requester replied');
   else if (ticket.status === 'resolved') transition(ticket, 'reopened', 'requester', 'Requester replied after resolution');
 
+  if (ticket.assigneeId) {
+    emit({ recipientId: ticket.assigneeId, event: 'requester_replied', title: `New reply from ${requester?.name ?? 'requester'}`, ticketId: ticket.id, ticketRef: ticket.reference });
+  }
   return clone(message);
 }
 
@@ -351,6 +355,7 @@ export async function addAgentReply(ticketId: string, agentId: string, body: str
   if (!ticket.firstResponseAt) ticket.firstResponseAt = now;
   if (ticket.status === 'new' || ticket.status === 'open') transition(ticket, 'in_progress', agentId);
 
+  emit({ recipientId: agentId, event: 'reply_sent', title: `Reply emailed to requester on ${ticket.reference}`, ticketId: ticket.id, ticketRef: ticket.reference, emailed: true });
   return clone(message);
 }
 
@@ -381,6 +386,7 @@ export async function resolveTicket(
   ticket.resolutionType = resolutionType;
   ticket.resolvedAt = nowIso();
   transition(ticket, 'resolved', agentId, note);
+  emit({ recipientId: agentId, event: 'ticket_resolved', title: `Resolution emailed to requester on ${ticket.reference}`, ticketId: ticket.id, ticketRef: ticket.reference, emailed: true });
   return clone(ticket);
 }
 
@@ -408,6 +414,9 @@ export async function assignTicket(ticketId: string, actor: string, toAssigneeId
   ticket.assigneeId = toAssigneeId;
   ticket.updatedAt = nowIso();
   recordAssignment(ticket, actor, from);
+  if (toAssigneeId && toAssigneeId !== from) {
+    emit({ recipientId: toAssigneeId, event: 'ticket_assigned', title: `Assigned: ${ticket.subject}`, ticketId: ticket.id, ticketRef: ticket.reference });
+  }
   return clone(ticket);
 }
 
@@ -480,6 +489,8 @@ export async function escalateTicket(ticketId: string, actor: string, input: Esc
     reason: input.reason, note: input.note.trim(), timestamp: now,
   });
   recordAssignment(ticket, actor, fromAssignee, fromTeam);
+  const escalationRecipient = input.toAssigneeId ?? actor;
+  emit({ recipientId: escalationRecipient, event: 'ticket_escalated', title: `Escalated: ${ticket.subject}`, ticketId: ticket.id, ticketRef: ticket.reference });
   // Note: status deliberately not changed.
   return clone(ticket);
 }
