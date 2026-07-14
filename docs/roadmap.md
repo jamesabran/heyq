@@ -23,7 +23,7 @@ but do **not** block foundation work.
 | 7 | Knowledge-base administration ✅ **done** | M | 3 |
 | 8 | Agent, team, queue & taxonomy administration ✅ **done** | M | 6 |
 | 9 | Simulated notifications & reporting ✅ **done** | M | 6 |
-| 10 | State coverage | S–M | 3–9 |
+| 10 | State coverage ✅ **done** | S–M | 3–9 |
 | 11 | Light/dark, responsive, a11y & interaction QA | M | 1–10 |
 | 12 | Frontend approval & backend-readiness assessment | S | 1–11 |
 
@@ -180,14 +180,20 @@ but do **not** block foundation work.
   `/app/reports` (all) and `/app/supervisor` (team). **Charts are dependency-free
   CSS bars** (see decision M9.2) — no Recharts added.
 
-## M10 — State coverage (S–M)
+## M10 — State coverage (S–M) — ✅ **done**
 
 - **Objective:** Robust empty/loading/success/error/validation states.
 - **Included:** Every list/detail/form gets defined states across the app.
 - **Exclusions:** New features.
 - **Dependencies:** M3–M9.
-- **Acceptance:** Every screen has defined states.
+- **Acceptance:** ✅ Every data view has loading (skeletons), empty/not-found,
+  and **error + retry** states; forms have validation + success. 2 tests.
 - **Complexity:** S–M.
+- **As-built notes:** Added a reusable `ErrorState` (retry via `useQuery.refetch`)
+  and wired the previously-missing error branch into every query-backed page
+  (help home/category/article/search, agent queues, ticket detail, requester
+  portal, dashboard, notifications, KB admin). Loading/empty/validation/success
+  already existed from M3–M9.
 
 ## M11 — Light/dark, responsive, accessibility & interaction QA (M)
 

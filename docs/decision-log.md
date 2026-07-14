@@ -24,6 +24,13 @@ source-of-truth plan; this is the durable index of *what was decided and why*.
 | D17 | **Production backend technology is NOT selected yet** | Deferred to post-MVP backend planning; the org's existing platform patterns may be evaluated as *one* reference, committed to none. |
 | D18 | **Avoid overengineering** — no microservices, DI, repository pattern, event bus, generic workflow/rules engine, plugin system, custom design system, or custom permissions framework | Prefer GGX conventions, plain TS models, small mock services, focused hooks, straightforward workflow functions, and component composition. |
 
+## Milestone 10 implementation decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| M10.1 | **One reusable `ErrorState` + `useQuery.refetch` retry**, wired into every data view | Uniform error handling with minimal per-page code; the error branch was the one state most pages were missing. |
+| M10.2 | **No artificial failure toggles in production code** | Error wiring is proven by a `useQuery` reject test; the app doesn't fake failures. |
+
 ## Milestone 9 implementation decisions
 
 | # | Decision | Rationale |

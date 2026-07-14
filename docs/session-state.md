@@ -7,12 +7,12 @@ _Last updated: 2026-07-13_
 
 ## Current phase
 
-**Milestones 1–9 implemented and passing all gates.** A standalone HeyQ app with
-the QuadX theme + light/dark, full route tree + role gating, the **public help
-center**, **ticket submission + requester portal**, the **agent workspace**,
-**triage**, **KB administration**, **admin config**, and **notifications +
-reporting** (in-app feed with email markers; operational dashboard). The approved
-source of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
+**Milestones 1–10 implemented and passing all gates.** A standalone HeyQ app —
+QuadX theme + light/dark, full route tree + role gating, public help center,
+ticket submission + requester portal, agent workspace, triage, KB admin, admin
+config, notifications + reporting, and **full state coverage** (loading / empty /
+error+retry / validation / success across every view). The approved source of
+truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pass-plan.md).
 
 ## Repository state
 
@@ -146,10 +146,20 @@ source of truth is [`quadx-helpdesk-first-pass-plan.md`](quadx-helpdesk-first-pa
 - **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
   tests **85/85** ✓, build ✓. Browser-verified (dashboard counters/charts; feed).
 
+## Done (Milestone 10)
+
+- Reusable `ErrorState` (retry via `useQuery.refetch`) wired into every
+  query-backed page (help home/category/article/search, agent queues, ticket
+  detail, requester portal, dashboard, notifications, KB admin). Loading, empty,
+  validation, and success states already existed.
+- **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
+  tests **87/87** ✓, build ✓.
+
 ## Next up
 
-**Milestone 10 — State coverage** (see [`roadmap.md`](roadmap.md)): empty,
-loading, success, error, and validation states across all lists/details/forms.
+**Milestone 11 — Light/dark, responsive, a11y & interaction QA** (see
+[`roadmap.md`](roadmap.md)): dual-mode audit, responsive breakpoints,
+keyboard/focus/screen-reader passes, per-role review.
 
 ## Open questions (non-blocking for M1)
 
