@@ -5,10 +5,15 @@ repository currently holds the **planning documentation and the Milestone 1
 plan** for a **frontend-first, high-fidelity interactive prototype** built on the
 GGX Corporate stack and design system.
 
-> **Status:** **Milestone 1 (Foundation & QuadX Theme) implemented** — standalone
-> Vite/React/TS/Tailwind-v4 app with the QuadX theme, light/dark, an application
-> shell, and a design-system validation page. Helpdesk features are not built
-> yet. The approved source of truth is
+> **Status:** **Frontend-first MVP complete — all 12 milestones delivered.**
+> Standalone Vite/React/TS/Tailwind-v4 app: public help center, ticket submission
+> + requester portal, agent workspace (queues, 3-pane detail, replies, internal
+> notes, resolve), triage (assign/classify/escalate), KB admin, admin config
+> (agents/teams/routing/SLA/taxonomy), simulated notifications, and an operational
+> dashboard — all over typed async mock services, QuadX-themed, light/dark, with
+> role-based UI. 90 tests, clean build. Awaiting stakeholder sign-off to proceed
+> to backend planning (see [`docs/backend-readiness.md`](docs/backend-readiness.md)).
+> The approved source of truth is
 > [`docs/quadx-helpdesk-first-pass-plan.md`](docs/quadx-helpdesk-first-pass-plan.md).
 
 ## What HeyQ is (MVP)
@@ -52,7 +57,8 @@ sections (§17–§20) of the source-of-truth plan.
 | [`docs/mock-service-layer.md`](docs/mock-service-layer.md) | Async service facades + query/mutation seam |
 | [`docs/sla-simulation.md`](docs/sla-simulation.md) | Simulated clock, business hours, warn/breach |
 | [`docs/design-system-strategy.md`](docs/design-system-strategy.md) | Token reuse, QuadX red layer, dark mode |
-| [`docs/decision-log.md`](docs/decision-log.md) | Key decisions and their rationale |
+| [`docs/decision-log.md`](docs/decision-log.md) | Key decisions and their rationale (incl. per-milestone) |
+| [`docs/backend-readiness.md`](docs/backend-readiness.md) | API seams, contracts, and productionization gaps (M12) |
 | [`docs/session-state.md`](docs/session-state.md) | Current state, open questions, next steps |
 
 ## Reference projects (not dependencies)

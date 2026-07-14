@@ -25,7 +25,7 @@ but do **not** block foundation work.
 | 9 | Simulated notifications & reporting ✅ **done** | M | 6 |
 | 10 | State coverage ✅ **done** | S–M | 3–9 |
 | 11 | Light/dark, responsive, a11y & interaction QA ✅ **done** | M | 1–10 |
-| 12 | Frontend approval & backend-readiness assessment | S | 1–11 |
+| 12 | Frontend approval & backend-readiness assessment ✅ **done** | S | 1–11 |
 
 ---
 
@@ -209,14 +209,17 @@ but do **not** block foundation work.
   interactions covered by the suite. 3 a11y tests.
 - **Complexity:** M.
 
-## M12 — Frontend approval & backend-readiness assessment (S)
+## M12 — Frontend approval & backend-readiness assessment (S) — ✅ **done**
 
 - **Objective:** Gate to backend planning.
 - **Included:** Stakeholder review; document the API contracts/seams; backend
   productionization readiness note (technology still unselected).
 - **Exclusions:** Any backend build.
 - **Dependencies:** M1–M11.
-- **Acceptance:** Sign-off to proceed to backend planning.
+- **Acceptance:** ✅ [`backend-readiness.md`](backend-readiness.md) inventories the
+  service seams, endpoints, typed contracts, simulated→production gaps, and
+  standalone/Zendesk-independence; awaits stakeholder sign-off (the only
+  remaining item — a decision, not a build).
 - **Complexity:** S.
 
 ---
