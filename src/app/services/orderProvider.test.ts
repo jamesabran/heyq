@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { getOrderProvider, type OrderProviderIdentity } from './orderProvider';
-import { businessPlusProviderState } from '../data/businessPlusOrders';
+import { businessPlusOrders, businessPlusProviderState } from '../data/businessPlusOrders';
 
 const nadia: OrderProviderIdentity = { externalUserId: 'bp-user-nadia', externalOrgId: 'bp-org-acme' };
 const omar: OrderProviderIdentity = { externalUserId: 'bp-user-omar', externalOrgId: 'bp-org-zenith' };
+
+/** Derived from the seed so adding orders (e.g. the Business+ handoff set) can't
+ *  break the scoping assertions — what matters is the SCOPE, not the count. */
+const countFor = (orgId: string) =>
+  businessPlusOrders.filter((o) => o.externalOrgId === orgId).length;
 
 const provider = getOrderProvider();
 
@@ -17,16 +22,25 @@ describe('orderProvider — authorization (M22)', () => {
     const zenith = await provider.listAuthorizedOrders(omar);
     if (acme.status !== 'ok' || zenith.status !== 'ok') throw new Error('expected ok');
 
-    expect(acme.orders.length).toBe(4);
+    expect(acme.orders.length).toBe(countFor('bp-org-acme'));
     expect(acme.orders.every((o) => o.externalOrgId === 'bp-org-acme')).toBe(true);
-    expect(zenith.orders.length).toBe(2);
+    expect(zenith.orders.length).toBe(countFor('bp-org-zenith'));
     expect(zenith.orders.every((o) => o.externalOrgId === 'bp-org-zenith')).toBe(true);
   });
 
   it('narrows the list by a partial search across id, tracking, and recipient', async () => {
     const byCity = await provider.listAuthorizedOrders(nadia, 'davao');
     if (byCity.status !== 'ok') throw new Error('expected ok');
-    expect(byCity.orders.map((o) => o.externalOrderId)).toEqual(['BP-ORD-7003']);
+    // Every hit matches the term, and the known Davao order is among them.
+    expect(byCity.orders.length).toBeGreaterThan(0);
+    expect(byCity.orders.map((o) => o.externalOrderId)).toContain('BP-ORD-7003');
+    expect(
+      byCity.orders.every((o) =>
+        `${o.externalOrderId} ${o.trackingNumber} ${o.recipientSummary} ${o.destination ?? ''}`
+          .toLowerCase()
+          .includes('davao'),
+      ),
+    ).toBe(true);
 
     const byTracking = await provider.listAuthorizedOrders(nadia, '2mrx');
     if (byTracking.status !== 'ok') throw new Error('expected ok');

@@ -74,6 +74,48 @@ export const businessPlusOrders: BusinessPlusOrderRecord[] = [
     senderSummary: 'Acme Retail — Warehouse 2', recipientSummary: 'A. Reyes, Pasig',
     destination: 'Pasig City',
   },
+  // ── GGX Business+ handoff compatibility (M23) ─────────────────────────────
+  // Business+ deep-links real OMS orders (`/contact?order=GGX-2026-90008`). Its
+  // stable order id IS the GGX tracking number — that is the identifier every
+  // Business+ route, lookup, and tracking surface keys on. These rows let the
+  // handoff resolve against the mock provider; the real provider will serve them
+  // from OMS and this block goes away. Additive on purpose: the BP-ORD-* set
+  // above is untouched.
+  {
+    externalOrderId: 'GGX-2026-90008', externalOrgId: 'bp-org-acme',
+    trackingNumber: 'GGX-2026-90008', shipmentStatus: 'failed_delivery',
+    bookingDate: '2026-05-31T02:00:00Z',
+    senderSummary: 'Acme Corporation', recipientSummary: 'Horizon Publishing Co., Pasig',
+    destination: 'Pasig City',
+  },
+  {
+    externalOrderId: 'GGX-2026-90004', externalOrgId: 'bp-org-acme',
+    trackingNumber: 'GGX-2026-90004', shipmentStatus: 'in_transit',
+    bookingDate: '2026-05-30T02:00:00Z',
+    senderSummary: 'Acme Corporation', recipientSummary: 'Vertex Logistics Corp., Iloilo',
+    destination: 'Iloilo City',
+  },
+  {
+    externalOrderId: 'GGX-2026-90001', externalOrgId: 'bp-org-acme',
+    trackingNumber: 'GGX-2026-90001', shipmentStatus: 'picked_up',
+    bookingDate: '2026-05-29T02:00:00Z',
+    senderSummary: 'Acme Corporation', recipientSummary: 'Bluewave E-Commerce, Davao',
+    destination: 'Davao City',
+  },
+  {
+    externalOrderId: 'GGX-2026-90009', externalOrgId: 'bp-org-acme',
+    trackingNumber: 'GGX-2026-90009', shipmentStatus: 'in_transit',
+    bookingDate: '2026-05-31T02:00:00Z',
+    senderSummary: 'Acme Luzon', recipientSummary: 'Meridian Health Corp., Quezon City',
+    destination: 'Quezon City',
+  },
+  {
+    externalOrderId: 'GGX-2024-89240', externalOrgId: 'bp-org-acme',
+    trackingNumber: 'GGX-2024-89240', shipmentStatus: 'delivered',
+    bookingDate: '2026-05-18T02:00:00Z',
+    senderSummary: 'Acme Corporation', recipientSummary: 'TechStart Solutions, Makati',
+    destination: 'Makati City',
+  },
   {
     externalOrderId: 'BP-ORD-8001', externalOrgId: 'bp-org-zenith',
     trackingNumber: 'V2WM-7JXB-F61S', shipmentStatus: 'in_transit',
