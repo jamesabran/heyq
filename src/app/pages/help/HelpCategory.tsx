@@ -9,7 +9,7 @@ import { useQuery } from '../../hooks/useQuery';
 import { ArticleCard } from '../../components/help/ArticleCard';
 import { CategoryCard } from '../../components/help/CategoryCard';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
-import { BackToHelpLink, EmptyState, LoadingGrid } from '../../components/help/HelpStates';
+import { BackToHelpLink, EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 /** Category / subcategory listing: subcategories + articles in the category. */
 export function HelpCategory() {
@@ -27,6 +27,9 @@ export function HelpCategory() {
     [cat?.id],
   );
 
+  if (category.error) {
+    return <ErrorState onRetry={category.refetch} />;
+  }
   if (category.loading) {
     return <LoadingGrid />;
   }

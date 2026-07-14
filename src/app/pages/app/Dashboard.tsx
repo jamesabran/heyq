@@ -4,7 +4,7 @@ import { useQuery } from '../../hooks/useQuery';
 import { useIdentity } from '../../contexts/IdentityContext';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { BarList, StatTile } from '../../components/reports/charts';
-import { LoadingGrid } from '../../components/help/HelpStates';
+import { ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 /** Operational dashboard. `scope='team'` limits to the viewer's team (supervisor). */
 export function Dashboard({ scope = 'all' }: { scope?: 'all' | 'team' }) {
@@ -17,6 +17,7 @@ export function Dashboard({ scope = 'all' }: { scope?: 'all' | 'team' }) {
     ? `Operational snapshot for ${identity.teamName ?? 'your team'}.`
     : 'Operational snapshot across all tickets.';
 
+  if (summary.error) return <ErrorState onRetry={summary.refetch} />;
   if (summary.loading || !summary.data) return <LoadingGrid count={3} />;
   const s = summary.data;
 

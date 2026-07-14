@@ -5,7 +5,7 @@ import { useQuery } from '../../hooks/useQuery';
 import { ArticleCard } from '../../components/help/ArticleCard';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { HelpSearchBox } from '../../components/help/HelpSearchBox';
-import { EmptyState, LoadingGrid } from '../../components/help/HelpStates';
+import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 /** Help-center search results, driven by the `?q=` query parameter. */
 export function HelpSearch() {
@@ -27,6 +27,8 @@ export function HelpSearch() {
         <EmptyState title="Search the help center">
           Type a question or keyword above to find articles.
         </EmptyState>
+      ) : results.error ? (
+        <ErrorState onRetry={results.refetch} />
       ) : results.loading ? (
         <LoadingGrid count={3} />
       ) : count === 0 ? (

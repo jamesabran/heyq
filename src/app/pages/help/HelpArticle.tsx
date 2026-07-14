@@ -12,7 +12,7 @@ import { ArticleBody } from '../../components/help/ArticleBody';
 import { ArticleCard } from '../../components/help/ArticleCard';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { Separator } from '../../components/ui/Separator';
-import { BackToHelpLink, EmptyState, LoadingGrid } from '../../components/help/HelpStates';
+import { BackToHelpLink, EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 /** Public article view: breadcrumb, last-updated, body, and related articles. */
 export function HelpArticle() {
@@ -30,6 +30,9 @@ export function HelpArticle() {
     [art?.id],
   );
 
+  if (article.error) {
+    return <ErrorState onRetry={article.refetch} />;
+  }
   if (article.loading) {
     return <LoadingGrid count={3} />;
   }

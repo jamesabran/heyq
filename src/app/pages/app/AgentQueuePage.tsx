@@ -8,7 +8,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { TicketTable } from '../../components/ticket/TicketTable';
-import { LoadingGrid } from '../../components/help/HelpStates';
+import { ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 const STATUSES: TicketStatus[] = [
   'new', 'open', 'in_progress', 'pending_requester', 'resolved', 'closed', 'reopened',
@@ -77,7 +77,13 @@ export function AgentQueuePage({
         </div>
       </div>
 
-      {tickets.loading ? <LoadingGrid count={3} /> : <TicketTable items={tickets.data ?? []} />}
+      {tickets.error ? (
+        <ErrorState onRetry={tickets.refetch} />
+      ) : tickets.loading ? (
+        <LoadingGrid count={3} />
+      ) : (
+        <TicketTable items={tickets.data ?? []} />
+      )}
     </div>
   );
 }

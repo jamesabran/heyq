@@ -12,7 +12,7 @@ import { formatDate } from '../../lib/utils';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Badge } from '../../components/ui/Badge';
 import { Button, buttonVariants } from '../../components/ui/Button';
-import { LoadingGrid } from '../../components/help/HelpStates';
+import { ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 /** KB administration: list every article with authoring actions. */
 export function KbAdminList() {
@@ -39,7 +39,9 @@ export function KbAdminList() {
         }
       />
 
-      {articles.loading ? (
+      {articles.error ? (
+        <ErrorState onRetry={articles.refetch} />
+      ) : articles.loading ? (
         <LoadingGrid count={3} />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">

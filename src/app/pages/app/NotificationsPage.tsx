@@ -16,7 +16,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent } from '../../components/ui/Card';
-import { LoadingGrid } from '../../components/help/HelpStates';
+import { ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 export function NotificationsPage() {
   const { identity } = useIdentity();
@@ -48,7 +48,9 @@ export function NotificationsPage() {
         Mute “ticket resolved” notifications
       </label>
 
-      {feed.loading ? (
+      {feed.error ? (
+        <ErrorState onRetry={feed.refetch} />
+      ) : feed.loading ? (
         <LoadingGrid count={2} />
       ) : (feed.data?.length ?? 0) === 0 ? (
         <Card><CardContent className="px-6 py-10 text-center text-sm text-muted-foreground">No notifications.</CardContent></Card>

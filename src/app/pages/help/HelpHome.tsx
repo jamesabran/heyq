@@ -4,7 +4,7 @@ import { useQuery } from '../../hooks/useQuery';
 import { ArticleCard } from '../../components/help/ArticleCard';
 import { CategoryCard } from '../../components/help/CategoryCard';
 import { HelpSearchBox } from '../../components/help/HelpSearchBox';
-import { LoadingGrid } from '../../components/help/HelpStates';
+import { ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 /** Public help center home: search hero, featured articles, and category grid. */
 export function HelpHome() {
@@ -26,7 +26,9 @@ export function HelpHome() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-xl font-semibold text-foreground">Featured articles</h2>
-        {featured.loading ? (
+        {featured.error ? (
+          <ErrorState onRetry={featured.refetch} />
+        ) : featured.loading ? (
           <LoadingGrid count={3} />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -39,7 +41,9 @@ export function HelpHome() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-xl font-semibold text-foreground">Browse by category</h2>
-        {categories.loading ? (
+        {categories.error ? (
+          <ErrorState onRetry={categories.refetch} />
+        ) : categories.loading ? (
           <LoadingGrid />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

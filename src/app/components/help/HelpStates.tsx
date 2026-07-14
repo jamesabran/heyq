@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { cn } from '../../lib/utils';
-import { buttonVariants } from '../ui/Button';
+import { Button, buttonVariants } from '../ui/Button';
 import { Card, CardContent } from '../ui/Card';
 
 /** Simple skeleton grid shown while help content loads. */
@@ -31,6 +32,30 @@ export function EmptyState({
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         {children && <p className="max-w-md text-sm text-muted-foreground">{children}</p>}
         {action}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Standard error panel with a retry action, for failed data loads. */
+export function ErrorState({
+  title = 'Something went wrong',
+  message = 'We couldn’t load this right now. Please try again.',
+  onRetry,
+}: {
+  title?: string;
+  message?: ReactNode;
+  onRetry?: () => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+          <IconAlertTriangle size={22} />
+        </span>
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <p className="max-w-md text-sm text-muted-foreground">{message}</p>
+        {onRetry && <Button variant="outline" onClick={onRetry}>Try again</Button>}
       </CardContent>
     </Card>
   );

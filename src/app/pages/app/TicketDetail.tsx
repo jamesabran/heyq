@@ -25,7 +25,7 @@ import { PriorityBadge, SlaBadge } from '../../components/ticket/badges';
 import { AgentConversation } from '../../components/ticket/AgentConversation';
 import { TicketComposer } from '../../components/ticket/TicketComposer';
 import { TicketActions } from '../../components/ticket/TicketActions';
-import { EmptyState, LoadingGrid } from '../../components/help/HelpStates';
+import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 export function TicketDetail() {
   const { id = '' } = useParams();
@@ -43,6 +43,7 @@ export function TicketDetail() {
   const [resolution, setResolution] = useState<ResolutionType>('solved');
   const [resolveNote, setResolveNote] = useState('');
 
+  if (detail.error) return <ErrorState onRetry={detail.refetch} />;
   if (detail.loading) return <LoadingGrid count={3} />;
   if (!view) {
     return <EmptyState title="Ticket not found">This ticket doesn&apos;t exist.</EmptyState>;

@@ -12,7 +12,7 @@ import { Separator } from '../components/ui/Separator';
 import { Textarea } from '../components/ui/Textarea';
 import { StatusChip } from '../components/ticket/StatusChip';
 import { ConversationThread } from '../components/ticket/ConversationThread';
-import { BackToHelpLink, EmptyState, LoadingGrid } from '../components/help/HelpStates';
+import { BackToHelpLink, EmptyState, ErrorState, LoadingGrid } from '../components/help/HelpStates';
 
 /** Requester ticket portal, reached only via a simulated secure-link token. */
 export function RequesterPortal() {
@@ -32,6 +32,7 @@ export function RequesterPortal() {
   const reopen = useMutation(reopenTicket);
   const refresh = () => setVersion((v) => v + 1);
 
+  if (portal.error) return <ErrorState onRetry={portal.refetch} />;
   if (portal.loading) return <LoadingGrid count={3} />;
 
   if (!view) {
