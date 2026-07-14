@@ -15,5 +15,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    // e2e/ is Playwright's; it needs a real browser, not jsdom.
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
   },
 });

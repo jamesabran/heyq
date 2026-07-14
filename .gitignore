@@ -17,3 +17,6 @@ coverage
 
 # Local, user-specific Claude settings (keep launch.json shared)
 .claude/settings.local.json
+e2e/screenshots/
+test-results/
+playwright-report/

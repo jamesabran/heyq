@@ -27,7 +27,9 @@ export function Dashboard({ scope = 'all' }: { scope?: 'all' | 'team' }) {
 
       {/* The same counters the Overview uses, so a lead reading both sees one set
           of numbers — including Reopened, which is a flag rather than a status. */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+      {/* 7 tiles only go one-across at xl; at lg they'd be ~105px wide and the
+          two-word labels would wrap awkwardly. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-7">
         <StatTile label="Total" value={s.total} />
         <StatTile label="Open" value={s.open} />
         <StatTile label="Unassigned" value={s.unassigned} />

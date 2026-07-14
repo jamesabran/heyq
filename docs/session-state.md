@@ -298,14 +298,68 @@ dashboard ✅ — now the default authenticated landing**.
 
 ### M21 remaining limitations
 
-- **No visual verification in-session.** There is no browser automation available
-  here, so light/dark contrast and responsive widths are reasoned from tokens and
-  Tailwind breakpoints and are asserted only at the token/variant level (a test
-  pins the semantic mapping). **A manual light/dark + mobile pass is still owed.**
 - The shared table caps at `max-h-[70vh]` for its sticky header; on very short
   viewports that is tighter than ideal.
 - Relative timestamps ("3h ago") are computed against the **simulated** clock, so
   they will read oddly if the simulated `now` is ever moved far from the seed data.
+
+## Verification status (browser smoke pass)
+
+A **Playwright smoke suite** now exists as a proxy for the manual QA pass:
+`npm run test:e2e` (config `playwright.config.ts`, specs `e2e/smoke.spec.ts`).
+**45 checks pass** across three viewports — desktop 1440×900, tablet 768×1024,
+mobile 375×812. It runs Chromium only and is deliberately **not** a pixel-diff
+suite (those break on every copy change).
+
+### Verified automatically
+
+- **Every primary route renders with zero console/page errors** at all three
+  widths: `/app` (agent, supervisor, customer), `/app/mine`, `/app/team`,
+  `/app/views`, `/app/tickets/:id`, `/app/reports`, `/admin/audit`, `/contact`.
+- **No page-level horizontal overflow** at any width (wide tables scroll inside
+  their own box, which is intended; the *page body* must not pan — asserted).
+- **Dark mode** loads and applies `.dark` to `<html>` with no runtime errors.
+- Tracking numbers show as a column at ≥`md` and **fold into the subject line**
+  at mobile rather than vanishing; "Pending Requester" appears nowhere.
+- Overview counter → filtered queue drill-down (`/app/mine?priority=urgent`).
+- **Reopened** and **On Hold** saved views filter correctly; the reopened filter
+  renders as a visible, clearable chip.
+- The public contact form rejects a malformed tracking number.
+
+### Still NOT verified — needs human eyes
+
+The smoke suite proves things *render and behave*; it cannot judge whether they
+*look right*. Outstanding:
+
+1. **Colour contrast measured against WCAG AA.** The semantic mapping is pinned by
+   a unit test (no status is red/brand), but the actual rendered contrast of
+   `text-amber-700`/`amber-400`, the green SLA dot, and the subtle status chips has
+   **not** been measured in either theme.
+2. **Whether the badge hierarchy actually reads as calm** — the core intent of M21.
+   This is a judgment call no assertion can make.
+3. Hover/focus states and the sticky header's appearance while scrolling.
+4. Light mode specifically: the smoke suite forces dark only on one route.
+
+### Routes + viewports for the manual pass
+
+Walk these in **both light and dark**, at **1440px, 768px, and 375px**:
+
+| Route | Identity | What to look at |
+|---|---|---|
+| `/app` | `l1_agent`, `team_lead`, `admin`, `kb_editor`, `customer` | Counter cards, attention tables, the all-clear/stale states |
+| `/app/mine` | `l1_agent` | **Badge hierarchy** — does an ordinary row read as calm? |
+| `/app/team` | `admin` | Tracking + Concern columns; column shedding at 768/375 |
+| `/app/tickets/tkt-seed-7` | `admin` | Escalation indicator, hold panel, SLA badges |
+| `/app/tickets/tkt-seed-1` | `l1_agent` | On Hold chip + hold reason |
+| `/app/reports` | `admin` | 7 stat tiles (wrap behaviour at 768px) |
+| `/admin/audit` | `admin` | Sticky header, actor folding at mobile |
+| `/contact` | `guest` | Tracking-number validation message |
+
+### Screenshots
+
+33 full-page PNGs at **`e2e/screenshots/`** (`{viewport}-{route}.png`, plus
+`{viewport}-queue-mine-dark.png`). They are **gitignored** — regenerate with
+`npm run test:e2e`.
 
 ## Next up
 

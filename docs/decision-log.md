@@ -75,6 +75,13 @@ M13–M18 and §21 of the plan.
 | D39 | **One shared `TicketTable`; `AttentionTable` deleted.** The Overview passes an optional per-row transaction context to light up the extra shipment/payment columns | Two tables meant two definitions of how a status, priority, or SLA looks. Now the queues, saved views, search, and the Overview render ticket state through exactly one component, and the only difference is columns the queues don't need. |
 | D40 | **Tracking numbers use `XXXX-XXXX-XXXX` and are denormalized onto `TicketListItem`** | The number lives on `RelatedTransaction` (rule #14 — linkage stays structured), but every table needs it; resolving it per-row in the view layer would have meant a service call per row. It stays visibly distinct from a `HQ-2026-0003` ticket reference. |
 
+## Browser smoke verification (M21 checkpoint)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D41 | **Added Playwright (Chromium only) as a smoke suite, not a visual-regression suite** — no pixel diffs, no snapshot baselines | The jsdom tests cannot catch layout: they have no viewport and no real CSS. A smoke pass at three widths answers "does it render, behave, and not overflow" — which is where the real bugs were. Pixel-diff baselines would fail on every copy change and get muted, which is worse than not having them. |
+| D42 | **The overflow assertion targets the page body, not tables** | Wide tables are *supposed* to scroll inside their own container. Asserting `documentElement.scrollWidth` catches the actual defect (the user panning the whole page sideways) without banning the intended pattern. |
+
 ## Milestone 11 implementation decisions
 
 | # | Decision | Rationale |

@@ -61,7 +61,10 @@ export function TicketTable({
 
   return (
     <div className="max-h-[70vh] overflow-auto rounded-xl border border-border">
-      <table className="w-full min-w-[720px] border-collapse text-sm">
+      {/* The min-width tracks the columns that are actually rendered: below `md`
+          only five survive, so forcing the desktop 820px there would make a phone
+          scroll sideways for columns that aren't even on screen. */}
+      <table className="w-full min-w-[460px] border-collapse text-sm md:min-w-[820px]">
         {/* Sticky header — long queues stay readable while scrolling. */}
         <thead className="sticky top-0 z-10 bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
           <tr>

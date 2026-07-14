@@ -8,7 +8,8 @@ import {
   type AuditEntry,
 } from '../../services/auditService';
 import { useQuery } from '../../hooks/useQuery';
-import { formatDateTime } from '../../lib/utils';
+import { simulatedNowMs } from '../../lib/clock';
+import { formatDateTime, formatRelativeTime } from '../../lib/utils';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
@@ -71,14 +72,15 @@ export function AuditLog() {
         subtitle="Every status change, assignment, escalation, note, and article revision — newest first."
       />
 
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Search + filters are one grouped control bar, as on the queues. */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3">
         <Input
           type="search"
           aria-label="Search the audit log"
           placeholder="Search reference, article, actor, action…"
           value={search}
           onChange={(e) => setParam('q', e.target.value)}
-          className="max-w-xs"
+          className="min-w-[16rem] flex-1 sm:max-w-md"
         />
         <div className="w-44">
           <Select
@@ -118,27 +120,36 @@ export function AuditLog() {
 }
 
 function AuditTable({ entries }: { entries: AuditEntry[] }) {
+  const now = simulatedNowMs();
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full min-w-[720px] text-sm">
-        <thead className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+    // The audit trail is the longest table in the app (every status event ever), so
+    // it scrolls inside its own box with a sticky header — same treatment as the
+    // ticket queues. Below `md` the Actor column folds into the Action cell.
+    <div className="max-h-[70vh] overflow-auto rounded-xl border border-border">
+      <table className="w-full min-w-[460px] border-collapse text-sm md:min-w-[720px]">
+        <thead className="sticky top-0 z-10 bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
           <tr>
-            <th className="px-3 py-2 font-medium">When</th>
-            <th className="px-3 py-2 font-medium">Actor</th>
-            <th className="px-3 py-2 font-medium">Type</th>
-            <th className="px-3 py-2 font-medium">Subject</th>
-            <th className="px-3 py-2 font-medium">Action</th>
+            <th scope="col" className="px-3 py-2.5 font-medium">When</th>
+            <th scope="col" className="hidden px-3 py-2.5 font-medium md:table-cell">Actor</th>
+            <th scope="col" className="hidden px-3 py-2.5 font-medium sm:table-cell">Type</th>
+            <th scope="col" className="px-3 py-2.5 font-medium">Subject</th>
+            <th scope="col" className="px-3 py-2.5 font-medium">Action</th>
           </tr>
         </thead>
         <tbody>
           {entries.map((e) => (
-            <tr key={`${e.category}-${e.id}`} className="border-b border-border last:border-0 hover:bg-accent/50">
-              <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{formatDateTime(e.timestamp)}</td>
-              <td className="px-3 py-2 text-foreground">{e.actorName}</td>
-              <td className="px-3 py-2">
+            <tr key={`${e.category}-${e.id}`} className="border-b border-border transition-colors last:border-0 hover:bg-accent/50 focus-within:bg-accent/50">
+              <td className="whitespace-nowrap px-3 py-2.5 align-top text-muted-foreground">
+                <time dateTime={e.timestamp} title={formatDateTime(e.timestamp)}>
+                  {formatRelativeTime(e.timestamp, now)}
+                </time>
+              </td>
+              <td className="hidden px-3 py-2.5 align-top text-foreground md:table-cell">{e.actorName}</td>
+              <td className="hidden px-3 py-2.5 align-top sm:table-cell">
                 <Badge variant={CATEGORY_VARIANT[e.category]}>{AUDIT_CATEGORY_LABELS[e.category]}</Badge>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-2.5 align-top">
                 {e.ticketId ? (
                   <Link to={`/app/tickets/${e.ticketId}`} className="font-medium text-accent-brand hover:underline">
                     {e.ticketRef}
@@ -151,7 +162,11 @@ function AuditTable({ entries }: { entries: AuditEntry[] }) {
                   <span className="text-muted-foreground">—</span>
                 )}
               </td>
-              <td className="px-3 py-2 text-muted-foreground">{e.action}</td>
+              <td className="px-3 py-2.5 align-top text-muted-foreground">
+                {e.action}
+                {/* Actor is shed above, not lost — it folds in here. */}
+                <span className="mt-0.5 block text-xs md:hidden">{e.actorName}</span>
+              </td>
             </tr>
           ))}
         </tbody>

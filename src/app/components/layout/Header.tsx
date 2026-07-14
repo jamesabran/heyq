@@ -43,7 +43,9 @@ export function Header({ onToggleSidebar, sidebarOpen }: HeaderProps) {
 
       <BrandControl className="ml-1 hidden sm:inline-flex" />
 
-      <div className="ml-auto flex items-center gap-2">
+      {/* min-w-0 lets this group shrink instead of forcing the header wider than
+          the viewport (the identity select is the widest thing in it). */}
+      <div className="ml-auto flex min-w-0 items-center gap-2">
         <IdentitySwitcher />
         {onToggleSidebar && <NotificationBell />}
         <ThemeToggle />
