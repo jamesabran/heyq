@@ -3,8 +3,10 @@ import { Link, useSearchParams } from 'react-router';
 import { IconCircleCheck } from '@tabler/icons-react';
 import { listCategories, getTransactionById } from '../services/catalogService';
 import { createTicket, type CreateTicketResult } from '../services/ticketService';
+import { getRequesterProfile } from '../services/requesterService';
 import { useQuery } from '../hooks/useQuery';
 import { useMutation } from '../hooks/useMutation';
+import { useIdentity } from '../contexts/IdentityContext';
 import { isTrackingNumber, type MockAttachment } from '../models/ticket';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Alert } from '../components/ui/Alert';
@@ -15,6 +17,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Textarea } from '../components/ui/Textarea';
 import { AttachmentPicker } from '../components/ticket/AttachmentPicker';
+import { OrderPicker } from '../components/ticket/OrderPicker';
 
 interface FormState {
   name: string;
@@ -39,11 +42,24 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function ContactPage() {
   const [params] = useSearchParams();
   const txId = params.get('tx') ?? '';
+  // Business+ handoff (M22): /contact?order=BP-ORD-… preselects an authorized order.
+  const requestedOrderId = params.get('order') ?? undefined;
+
+  const { identity } = useIdentity();
+  const businessPlus = identity.businessPlus;
 
   const categories = useQuery(useCallback(() => listCategories(), []), []);
   const transaction = useQuery(
     useCallback(() => (txId ? getTransactionById(txId) : Promise.resolve(null)), [txId]),
     [txId],
+  );
+  const requesterId = identity.requesterId;
+  const profile = useQuery(
+    useCallback(
+      () => (requesterId ? getRequesterProfile(requesterId) : Promise.resolve(null)),
+      [requesterId],
+    ),
+    [requesterId],
   );
   const tx = transaction.data;
   const fromTransaction = Boolean(tx);
@@ -51,6 +67,7 @@ export function ContactPage() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [result, setResult] = useState<CreateTicketResult | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const submit = useMutation(createTicket);
 
   // Prefill known, read-only fields when arriving from a transaction.
@@ -65,6 +82,18 @@ export function ContactPage() {
       orderRef: tx.orderId ?? f.orderRef,
     }));
   }, [tx]);
+
+  // A signed-in customer's contact details prefill (still editable).
+  useEffect(() => {
+    const p = profile.data;
+    if (!p) return;
+    setForm((f) => ({
+      ...f,
+      name: f.name || p.name,
+      email: f.email || p.email,
+      mobile: f.mobile || (p.mobile ?? ''),
+    }));
+  }, [profile.data]);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -91,20 +120,37 @@ export function ContactPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
-    const res = await submit.mutate({
-      name: form.name,
-      email: form.email,
-      mobile: form.mobile || undefined,
-      categoryId: form.categoryId,
-      subcategoryId: form.subcategoryId || undefined,
-      subject: form.subject,
-      description: form.description,
-      trackingNumber: form.trackingNumber || undefined,
-      orderRef: form.orderRef || undefined,
-      attachments: form.attachments,
-      relatedTransactionId: tx?.id,
-    });
-    setResult(res);
+    try {
+      const res = await submit.mutate({
+        name: form.name,
+        email: form.email,
+        mobile: form.mobile || undefined,
+        categoryId: form.categoryId,
+        subcategoryId: form.subcategoryId || undefined,
+        subject: form.subject,
+        description: form.description,
+        trackingNumber: form.trackingNumber || undefined,
+        orderRef: form.orderRef || undefined,
+        attachments: form.attachments,
+        relatedTransactionId: tx?.id,
+        requesterId,
+        businessPlusOrder:
+          businessPlus && selectedOrderId
+            ? {
+                identity: {
+                  externalUserId: businessPlus.externalUserId,
+                  externalOrgId: businessPlus.externalOrgId,
+                },
+                externalOrderId: selectedOrderId,
+              }
+            : undefined,
+      });
+      setResult(res);
+    } catch {
+      // submit.error carries the message (e.g. provider unreachable at the moment
+      // of submission) — rendered by the alert near the submit button, and the
+      // requester can deselect the order to continue without it.
+    }
   }
 
   if (result) {
@@ -174,6 +220,21 @@ export function ContactPage() {
             </FormField>
           </CardContent>
         </Card>
+
+        {/* Business+ requesters can link one of their authorized orders (M22).
+            Guests and non-Business+ identities keep the manual flow untouched. */}
+        {businessPlus && (
+          <OrderPicker
+            identity={{
+              externalUserId: businessPlus.externalUserId,
+              externalOrgId: businessPlus.externalOrgId,
+            }}
+            orgName={businessPlus.orgName}
+            selectedOrderId={selectedOrderId}
+            onSelect={setSelectedOrderId}
+            requestedOrderId={requestedOrderId}
+          />
+        )}
 
         <Card>
           <CardHeader><CardTitle>Your concern</CardTitle></CardHeader>

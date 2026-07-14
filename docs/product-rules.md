@@ -142,3 +142,24 @@ rules 1–12.
     accessible name), never an unexplained arrow, because escalation is a separate
     dimension from status (rule #2). **Colour is never the only signal** — every
     state keeps a readable text label.
+
+## GGX Business+ linked orders (M22)
+
+25. **Business+ is a context provider, never the system of record.** HeyQ owns
+    the ticket and everything on it; Business+ supplies authenticated identity
+    and authorized order context through the `OrderProvider` seam only.
+    - **External IDs are reference data, never HeyQ primary keys.** A linked
+      ticket stores `externalOrderId` + a minimal **snapshot captured at
+      submission**, and stays fully usable from that snapshot when the provider
+      is unavailable or the order is stale, missing, or deleted upstream.
+    - **Authorization is enforced at the service boundary**, not the UI: linking
+      an order outside the requester's user/organization scope fails the
+      submission atomically. Cross-organization reads return `forbidden`.
+    - **GGX shipment status and HeyQ ticket status are independent dimensions**
+      (extends rule #13): a live shipment change never moves the ticket status,
+      and no HeyQ action mutates a shipment.
+    - **Linking is always optional.** The requester can submit without an order,
+      and must still be able to when the provider is down. Manual and non-GGX
+      flows are unchanged.
+    - The token-scoped requester portal renders the **snapshot only** — it never
+      calls the provider, so it cannot leak cross-organization data.

@@ -196,6 +196,28 @@ export const tickets: Ticket[] = [
     priority: 'high', source: 'web', assigneeId: 'l1_agent', relatedTransactionId: 'TXN-1001', slaPolicyId: 'sla-standard',
     createdAt: '2026-07-11T07:00:00Z', updatedAt: '2026-07-13T22:00:00Z', firstResponseAt: '2026-07-11T08:00:00Z',
   },
+  // GGX BUSINESS+ (M22) — submitted by Nadia (Acme Retail) with a linked order.
+  // The snapshot was captured while the shipment was still in transit; the live
+  // Business+ record has since moved to delivered — a refresh in the agent view
+  // shows the change without ever touching the HeyQ ticket status.
+  {
+    id: 'tkt-seed-18', reference: 'HQ-2026-0018', brandId: BRAND, requesterId: 'req-seed-3',
+    subject: 'Recipient reports the parcel has not moved', description: 'Our customer in Davao says tracking has shown In Transit for three days.',
+    categoryId: 'cat-delivery', subcategoryId: 'sub-del-late', concernType: 'delivery_delay',
+    status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
+    priority: 'normal', source: 'web', sourceSystem: 'ggx_business_plus',
+    linkedOrder: {
+      externalOrderId: 'BP-ORD-7003', trackingNumber: 'Y6TN-4QSV-D28E',
+      capturedAt: '2026-07-13T05:00:00Z',
+      snapshot: {
+        shipmentStatus: 'in_transit', bookingDate: '2026-07-08T01:15:00Z',
+        senderSummary: 'Acme Retail — Warehouse 3', recipientSummary: 'M. Santos, Davao',
+        destination: 'Davao City',
+      },
+    },
+    slaPolicyId: 'sla-standard',
+    createdAt: '2026-07-13T05:00:00Z', updatedAt: '2026-07-13T05:00:00Z', firstResponseAt: '2026-07-13T06:00:00Z',
+  },
 ];
 
 export const ticketMessages: TicketMessage[] = [
@@ -225,6 +247,8 @@ export const ticketMessages: TicketMessage[] = [
   { id: 'msg-seed-17a', ticketId: 'tkt-seed-17', authorType: 'requester', authorId: 'req-seed-9', authorName: 'Karla Uy', body: 'You closed my last ticket but the parcel never arrived.', channel: 'web', visibility: 'public', createdAt: '2026-07-11T07:00:00Z' },
   { id: 'msg-seed-17b', ticketId: 'tkt-seed-17', authorType: 'agent', authorId: 'l1_agent', authorName: 'Alex Cruz', body: 'Apologies — I have raised a trace with the hub and will update you today.', channel: 'web', visibility: 'public', createdAt: '2026-07-11T08:00:00Z' },
   { id: 'msg-seed-17c', ticketId: 'tkt-seed-17', authorType: 'requester', authorId: 'req-seed-9', authorName: 'Karla Uy', body: 'Still nothing. Please reopen this.', channel: 'web', visibility: 'public', createdAt: '2026-07-13T22:00:00Z' },
+  { id: 'msg-seed-18a', ticketId: 'tkt-seed-18', authorType: 'requester', authorId: 'req-seed-3', authorName: 'Nadia Cruz', body: 'Our customer in Davao says tracking has shown In Transit for three days.', channel: 'web', visibility: 'public', createdAt: '2026-07-13T05:00:00Z' },
+  { id: 'msg-seed-18b', ticketId: 'tkt-seed-18', authorType: 'agent', authorId: 'l1_agent', authorName: 'Alex Cruz', body: 'Thanks — checking the linehaul status with the Davao hub now.', channel: 'web', visibility: 'public', createdAt: '2026-07-13T06:00:00Z' },
 ];
 
 // Internal notes — agent-only, never surfaced to requesters (product rule #5).
@@ -294,6 +318,9 @@ export const statusEvents: StatusEvent[] = [
   { id: 'se-seed-17c', ticketId: 'tkt-seed-17', actor: 'l1_agent', fromStatus: 'open', toStatus: 'in_progress', timestamp: '2026-07-11T08:00:00Z' },
   { id: 'se-seed-17d', ticketId: 'tkt-seed-17', actor: 'l1_agent', fromStatus: 'in_progress', toStatus: 'resolved', timestamp: '2026-07-12T10:00:00Z' },
   { id: 'se-seed-17e', ticketId: 'tkt-seed-17', actor: 'requester', fromStatus: 'resolved', toStatus: 'in_progress', note: 'Requester replied after resolution', timestamp: '2026-07-13T22:00:00Z' },
+
+  { id: 'se-seed-18a', ticketId: 'tkt-seed-18', actor: 'requester', toStatus: 'new', timestamp: '2026-07-13T05:00:00Z' },
+  { id: 'se-seed-18b', ticketId: 'tkt-seed-18', actor: 'system', fromStatus: 'new', toStatus: 'open', timestamp: '2026-07-13T05:00:01Z' },
 ];
 
 export const assignments: Assignment[] = [
@@ -319,7 +346,8 @@ export const requesterAccess: RequesterAccess[] = [
   { ticketId: 'tkt-seed-3', accessToken: 'demo-token-pickup', issuedAt: '2026-07-14T08:00:00Z' },
   { ticketId: 'tkt-seed-7', accessToken: 'demo-token-lost', issuedAt: '2026-07-12T09:00:00Z' },
   { ticketId: 'tkt-seed-8', accessToken: 'demo-token-invoice', issuedAt: '2026-07-13T09:00:00Z' },
+  { ticketId: 'tkt-seed-18', accessToken: 'demo-token-bporder', issuedAt: '2026-07-13T05:00:00Z' },
 ];
 
 // Running reference counter, seeded past the demo tickets.
-export const ticketState = { referenceSeq: 17 };
+export const ticketState = { referenceSeq: 18 };

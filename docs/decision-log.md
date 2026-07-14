@@ -75,6 +75,16 @@ M13–M18 and §21 of the plan.
 | D39 | **One shared `TicketTable`; `AttentionTable` deleted.** The Overview passes an optional per-row transaction context to light up the extra shipment/payment columns | Two tables meant two definitions of how a status, priority, or SLA looks. Now the queues, saved views, search, and the Overview render ticket state through exactly one component, and the only difference is columns the queues don't need. |
 | D40 | **Tracking numbers use `XXXX-XXXX-XXXX` and are denormalized onto `TicketListItem`** | The number lives on `RelatedTransaction` (rule #14 — linkage stays structured), but every table needs it; resolving it per-row in the view layer would have meant a service call per row. It stays visibly distinct from a `HQ-2026-0003` ticket reference. |
 
+## Milestone 22 implementation decisions (GGX Business+ — HeyQ side)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D43 | **One `OrderProvider` interface with production-shaped result unions** (`ok`/`forbidden`/`not_found`/`unavailable`) is the entire Business+ seam; `getOrderProvider()` is the swap point | The real integration becomes a provider implementation, not a refactor. The unions force every consumer to handle authorization failure and downtime today, so the degraded paths are designed in rather than bolted on. |
+| D44 | **Snapshot-first linked orders:** the ticket stores the stable external id + a minimal snapshot captured at submission; all default rendering uses the snapshot, live data is an explicit agent action | HeyQ must stay standalone (rule #11): a support ticket cannot become unreadable because an upstream system is down or deleted the order. The snapshot is also the honest record of *what the requester saw when they reported the problem*. |
+| D45 | **Authorization is re-checked in `createTicket`, not just the picker, and a failed link aborts the whole submission** | The picker is a convenience; the service boundary is the gate (same principle a real API enforces with a session). Aborting atomically means an unauthorized attempt leaves no half-created ticket to clean up. |
+| D46 | **The requester portal renders the snapshot only and never calls the provider** | The portal is token-scoped, with no Business+ session to authorize against — calling the provider from it would need a second authorization model. The snapshot is already scoped to exactly what this requester submitted. |
+| D47 | **A support-scoped `getOrderForSupport` read exists for agents, separate from requester-scoped reads** | Agents aren't members of the requester's organization, so requester-scoped authorization can't serve them. Scoping it to display-only context on a ticket that already links the order keeps it narrow — it is not an order-browsing capability. |
+
 ## Browser smoke verification (M21 checkpoint)
 
 | # | Decision | Rationale |

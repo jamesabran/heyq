@@ -8,7 +8,8 @@ _Last updated: 2026-07-14_
 ## Current phase
 
 _Last session: Milestones 19 (role-based Overview dashboard), 20 (audit log
-viewer), and 21 (ticket-field & state-presentation rework) built._
+viewer), 21 (ticket-field & state-presentation rework), and 22 (GGX Business+
+integration, HeyQ side) built._
 
 **All 12 milestones implemented — the frontend-first MVP is complete.** A
 standalone HeyQ app: QuadX theme + light/dark, full route tree + role gating,
@@ -303,6 +304,39 @@ dashboard ✅ — now the default authenticated landing**.
 - Relative timestamps ("3h ago") are computed against the **simulated** clock, so
   they will read oddly if the simulated `now` is ever moved far from the seed data.
 
+## Done (M22 — GGX Business+ integration, HeyQ side)
+
+- **`OrderProvider` seam** (`services/orderProvider.ts`): the entire Business+
+  boundary. Mock backed by `data/businessPlusOrders.ts` (2 orgs, 6 orders, an
+  availability toggle). Requester-scoped list/lookup enforce org authorization;
+  a separate support-scoped read serves agent context. Production-shaped result
+  unions (`ok`/`forbidden`/`not_found`/`unavailable`).
+- **Ticket model:** `sourceSystem?: 'ggx_business_plus'` + `linkedOrder?`
+  (stable `externalOrderId`, tracking number, **snapshot captured at
+  submission**, `capturedAt`). External IDs are never HeyQ keys. Tracking
+  resolves snapshot-first, so linked tickets show in every table and search.
+- **Requester flow:** `/contact` shows an authorized-order picker for Business+
+  identities (the `customer` identity now carries a simulated Business+
+  session), with search, a `?order=` handoff deep link (out-of-scope orders are
+  refused with an explanation), an always-available no-order path, and graceful
+  degradation when the provider is down. Contact details prefill from the
+  signed-in requester and the ticket reuses their requester record.
+- **Agent/requester context:** `LinkedOrderPanel` in the detail left pane
+  (snapshot-first + explicit "check live status" with unavailable/deleted
+  notices); a snapshot-only card in the token-scoped portal (never calls the
+  provider). Source system shown in the classification card.
+- **Lifecycle:** linked tickets run the standard model end-to-end — queue
+  reception, assignment, public reply, internal-note privacy, requester reply,
+  hold, resolve, reopen-on-reply — proven by a single end-to-end service test.
+  Shipment status and ticket status are independent by test.
+- **Seed:** `tkt-seed-18` (Nadia @ Acme, linked to BP-ORD-7003) whose live
+  shipment has moved past its snapshot — demos refresh + independence.
+- **Contract:** [`business-plus-integration.md`](business-plus-integration.md)
+  records exactly what Business+ must later provide. Product rule 25; decisions
+  D43–D47.
+- **Gates green:** tokens ✓, lint ✓ (fast-refresh warnings only), typecheck ✓,
+  tests **169/169** ✓, e2e **51/51** ✓, build ✓.
+
 ## Verification status (browser smoke pass)
 
 A **Playwright smoke suite** now exists as a proxy for the manual QA pass:
@@ -363,11 +397,14 @@ Walk these in **both light and dark**, at **1440px, 768px, and 375px**:
 
 ## Next up
 
-**Every frontend milestone is built.** MVP (M1–M12) complete; Phase 2 frontend
-(M13–M16, M19) complete. **Nothing frontend is left on the roadmap.**
+**Every frontend milestone is built** (MVP M1–M12; Phase 2 M13–M16, M19–M22).
 
-The only remaining work is **backend**, and it is gated:
+Remaining work is **outside this repository or gated**:
 
+- **Business+ side of M22** — implement the provider contract in
+  [`business-plus-integration.md`](business-plus-integration.md): authenticated
+  user/org identity, authorized order list/lookup, and the handoff into
+  `/contact?order=…`. HeyQ's `OrderProvider` seam is the drop-in point.
 - **M17** — backend transaction lookup & sync planning: ✅ **plan written**
   ([`transaction-integration-plan.md`](transaction-integration-plan.md)).
 - **M18** — production GGX transaction/payment/remittance integration: ⏳ blocked.

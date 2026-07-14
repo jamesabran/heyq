@@ -120,6 +120,10 @@ export interface Ticket {
   requesterNotificationsEnabled?: boolean;
   assigneeId?: string;
   relatedTransactionId?: string;
+  // M22 — which external system originated the ticket, and the order it links.
+  // Both optional: manual / non-GGX flows are unchanged.
+  sourceSystem?: ExternalSourceSystem;
+  linkedOrder?: LinkedOrder;
   slaPolicyId: string;
   createdAt: string;
   updatedAt: string;
@@ -300,6 +304,37 @@ export interface RelatedTransaction {
   // Provenance + freshness for the "data source" and "stale data" states.
   dataSource: string;
   lastUpdatedAt: string;
+}
+
+// ── Linked external order (M22 — GGX Business+) ──────────────────────────────
+// A ticket raised from Business+ links an order by STABLE EXTERNAL ID and keeps a
+// minimal snapshot captured at submission. The snapshot is what makes the ticket
+// self-sufficient: it renders even when the provider is down or the order was
+// deleted upstream. External IDs are reference data — never HeyQ primary keys.
+
+export type ExternalSourceSystem = 'ggx_business_plus';
+
+export const SOURCE_SYSTEM_LABELS: Record<ExternalSourceSystem, string> = {
+  ggx_business_plus: 'GGX Business+',
+};
+
+/** Minimal order context captured at submission — enough to triage, nothing more. */
+export interface LinkedOrderSnapshot {
+  shipmentStatus: ShipmentStatus;
+  bookingDate: string;
+  /** Limited summaries, not full contact records (mirrors the masking rule #15). */
+  senderSummary: string;
+  recipientSummary: string;
+  destination?: string;
+}
+
+export interface LinkedOrder {
+  /** Stable Business+ order/shipment id. Reference data only. */
+  externalOrderId: string;
+  trackingNumber: string;
+  snapshot: LinkedOrderSnapshot;
+  /** When the snapshot was captured — shown so agents know how old it is. */
+  capturedAt: string;
 }
 
 export interface MockAttachment {

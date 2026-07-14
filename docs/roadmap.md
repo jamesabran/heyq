@@ -45,6 +45,7 @@ but do **not** block foundation work.
 | 19 | Role-based Overview dashboard (default landing) ✅ **built** | M | 13, 15, 16 |
 | 20 | Audit log viewer ✅ **built** | S–M | 6, 7 |
 | 21 | GGX tracking numbers, simplified states & badge hierarchy ✅ **built** | M | 13, 15, 19 |
+| 22 | GGX Business+ integration — HeyQ side (mock provider) ✅ **built** | M–L | 13, 21 |
 
 > **Note:** M13–M16 and M19 are frontend/mock work and have been **built ahead of
 > formal MVP sign-off** (all gates green — see as-built notes below). They remain
@@ -520,6 +521,44 @@ requester views; no needless abstractions/dependencies) is preserved.
   since pausing it would hide the very delay the SLA exists to surface. Reopened,
   being a flag rather than a status, gets a `?reopened=1` URL filter (clearable
   chip) plus a saved view, since it cannot live in the status select.
+
+## M22 — GGX Business+ integration, HeyQ side (M–L) — ✅ **built**
+
+- **Objective:** The complete Business+ support flow inside HeyQ — linked-order
+  ticket submission through agent handling, requester replies, resolution, and
+  reopening — behind a replaceable provider seam, with **no Business+ repository
+  work**.
+- **Included:** `OrderProvider` boundary + mock (org-scoped authorization,
+  search, availability toggle); order picker on `/contact` for Business+
+  identities with a `?order=` handoff deep link and a continue-without-order
+  path; `Ticket` gains `sourceSystem` + `linkedOrder` (stable external id,
+  tracking number, snapshot captured at submission); `LinkedOrderPanel` in the
+  agent detail (snapshot-first, support-scoped live check) and a snapshot card in
+  the requester portal; the full existing lifecycle over linked tickets. The
+  Business+ contract is documented in
+  [`business-plus-integration.md`](business-plus-integration.md).
+- **Exclusions:** The Business+ side itself; real SSO/OAuth/webhooks/queues;
+  shipment mutations; any new status.
+- **Dependencies:** M13 (transaction patterns), M21 (tracking-number format).
+- **Acceptance:** ✅ A Business+ requester lists only their organization's
+  orders, links one (or declines), and the ticket runs the standard lifecycle —
+  queue reception, assignment, public reply, internal-note privacy, requester
+  reply, resolve, reopen — with consistent queues/search/counters. Cross-org
+  linking is rejected at the service boundary without creating a ticket. With the
+  provider down: the form degrades to no-order submission, and existing linked
+  tickets keep rendering from their snapshot. A live shipment change never moves
+  ticket status. 20 unit/page tests + 2 e2e tests (×3 viewports).
+- **Complexity:** M–L.
+- **As-built notes:** Authorization is re-checked in `createTicket`, not just the
+  picker, and a failed link never half-creates a ticket. The `customer` identity
+  carries a simulated Business+ session (`bp-user-nadia` @ Acme Retail);
+  `tkt-seed-18` seeds a linked ticket whose live shipment (delivered) has moved
+  past its snapshot (in transit) to demo refresh + status independence. The
+  token-scoped portal renders the snapshot only and never calls the provider.
+  `trackingNumberFor` resolves snapshot-first, so linked tickets appear in every
+  table/search like any other ticket. No `closeTicket` service was added —
+  closure remains the seeded auto-close rule, and reopen already covers
+  resolved|closed.
 
 ---
 

@@ -11,6 +11,7 @@ import { useMutation } from '../../hooks/useMutation';
 import { useIdentity } from '../../contexts/IdentityContext';
 import {
   CONCERN_TYPE_LABELS,
+  SOURCE_SYSTEM_LABELS,
   RESOLUTION_LABELS,
   type ResolutionType,
 } from '../../models/ticket';
@@ -28,6 +29,7 @@ import { AgentConversation } from '../../components/ticket/AgentConversation';
 import { TicketComposer } from '../../components/ticket/TicketComposer';
 import { TicketActions } from '../../components/ticket/TicketActions';
 import { TransactionPanel } from '../../components/ticket/TransactionPanel';
+import { LinkedOrderPanel } from '../../components/ticket/LinkedOrderPanel';
 import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 export function TicketDetail() {
@@ -112,6 +114,9 @@ export function TicketDetail() {
               </div>
               <Row label="Escalation" value={ticket.escalationState === 'none' ? 'Not escalated' : ticket.escalationState.replace(/_/g, ' ')} />
               <Row label="Source" value={ticket.source} />
+              {ticket.sourceSystem && (
+                <Row label="Source system" value={SOURCE_SYSTEM_LABELS[ticket.sourceSystem]} />
+              )}
               {ticket.source === 'internal' && (
                 <Row
                   label="Requester notifications"
@@ -120,6 +125,9 @@ export function TicketDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Business+ linked order (M22) — snapshot-first order context. */}
+          {ticket.linkedOrder && <LinkedOrderPanel order={ticket.linkedOrder} />}
 
           <TransactionPanel
             ticketId={ticket.id}

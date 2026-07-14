@@ -131,6 +131,40 @@ test('the public form rejects a malformed tracking number', async ({ page }) => 
   await expect(page.getByText(/tracking numbers look like 1GGT-AYT1-TKK3/i)).toBeVisible();
 });
 
+test('a Business+ customer links an authorized order and submits (M22)', async ({ page }) => {
+  await visitAs(page, '/contact', 'customer');
+
+  // The picker lists only Acme's orders, and contact details are prefilled.
+  await expect(page.getByText('Link a GGX Business+ order')).toBeVisible();
+  await expect(page.getByText('Q7PL-2MRX-J90A')).toBeVisible();
+  await expect(page.getByLabel('Name')).toHaveValue('Nadia Cruz');
+
+  await page.getByRole('radio', { name: /order bp-ord-7001/i }).check();
+  await page.getByLabel('Concern type').selectOption({ label: 'Delivery' });
+  await page.getByLabel('Subject').fill('Recipient did not receive the parcel');
+  await page.getByLabel('Description').fill('Out for delivery since yesterday with no update.');
+  await page.getByRole('button', { name: /submit/i }).click();
+
+  await expect(page.getByRole('heading', { name: /ticket submitted/i })).toBeVisible();
+  await expect(page.getByText(/HQ-2026-\d{4}/)).toBeVisible();
+});
+
+test('an agent sees linked-order context, and live shipment never moves ticket status (M22)', async ({ page }) => {
+  await visitAs(page, '/app/tickets/tkt-seed-18', 'admin');
+
+  await expect(page.getByRole('heading', { name: /recipient reports the parcel has not moved/i })).toBeVisible();
+  await expect(page.getByText('GGX Business+ Order')).toBeVisible();
+  await expect(page.getByText('Y6TN-4QSV-D28E')).toBeVisible();
+  await expect(page.getByText('In transit', { exact: true })).toBeVisible(); // the snapshot badge
+
+  // Live check: the shipment moved to Delivered upstream; the HeyQ status chip
+  // stays exactly where the workflow left it.
+  await page.getByRole('button', { name: /check live status/i }).click();
+  await expect(page.getByText(/changed since submission/i)).toBeVisible();
+  await expect(page.getByText('Delivered', { exact: true })).toBeVisible();
+  await expect(page.getByText('Open', { exact: true }).first()).toBeVisible();
+});
+
 test('dark mode renders the app with no runtime errors', async ({ page }, testInfo) => {
   const errors = watchForErrors(page);
 

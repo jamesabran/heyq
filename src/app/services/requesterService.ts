@@ -8,7 +8,8 @@
  *   GET /me/tickets      → listTicketsForRequester
  */
 import { requesterAccess, requesters, tickets } from '../data/tickets';
-import { relatedTransactions, teams, ticketCategories } from '../data/catalog';
+import { teams, ticketCategories } from '../data/catalog';
+import { trackingNumberFor } from './ticketService';
 import type { Requester, Ticket } from '../models/ticket';
 import { clone, simulateLatency } from '../lib/mock';
 
@@ -54,6 +55,15 @@ export async function resolveAccessToken(token: string): Promise<PortalView | nu
   });
 }
 
+/** Contact details for prefilling forms when a known requester is signed in. */
+export async function getRequesterProfile(
+  requesterId: string,
+): Promise<Pick<Requester, 'name' | 'email' | 'mobile'> | null> {
+  await simulateLatency();
+  const r = requesters.find((x) => x.id === requesterId);
+  return r ? clone({ name: r.name, email: r.email, mobile: r.mobile }) : null;
+}
+
 /**
  * The requester's own tickets, newest activity first, each with its access
  * token so the row can open the portal. Requesters never see agent surfaces:
@@ -69,9 +79,7 @@ export async function listTicketsForRequester(requesterId: string): Promise<Requ
       clone({
         ticket,
         categoryName: ticketCategories.find((c) => c.id === ticket.categoryId)?.name ?? 'Uncategorized',
-        trackingNumber: ticket.relatedTransactionId
-          ? relatedTransactions.find((t) => t.id === ticket.relatedTransactionId)?.trackingNumber
-          : undefined,
+        trackingNumber: trackingNumberFor(ticket),
         accessToken: requesterAccess.find((a) => a.ticketId === ticket.id)?.accessToken,
       }),
     );

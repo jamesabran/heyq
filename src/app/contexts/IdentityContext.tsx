@@ -19,13 +19,25 @@ export interface Identity {
   teamName?: string;
   /** Seeded requester this identity submits as (customer role only, M19). */
   requesterId?: string;
+  /**
+   * Simulated GGX Business+ session (M22): the external user/org this identity
+   * is authenticated as upstream. Stands in for the future SSO handoff.
+   */
+  businessPlus?: {
+    externalUserId: string;
+    externalOrgId: string;
+    orgName: string;
+  };
 }
 
 // Demo identities reviewers can switch between (one per role; agents carry a
 // tier + team). Order here is the dropdown order.
 export const DEMO_IDENTITIES: Record<string, Identity> = {
   guest: { id: 'guest', name: 'Guest Visitor', role: 'guest' },
-  customer: { id: 'customer', name: 'Nadia Cruz', role: 'customer', requesterId: 'req-seed-3' },
+  customer: {
+    id: 'customer', name: 'Nadia Cruz', role: 'customer', requesterId: 'req-seed-3',
+    businessPlus: { externalUserId: 'bp-user-nadia', externalOrgId: 'bp-org-acme', orgName: 'Acme Retail Corp' },
+  },
   l1_agent: { id: 'l1_agent', name: 'Alex Cruz', role: 'l1_agent', tier: 'L1', teamId: 'team-cs', teamName: 'Customer Support' },
   l2_specialist: { id: 'l2_specialist', name: 'Bea Santos', role: 'l2_specialist', tier: 'L2', teamId: 'team-claims', teamName: 'Claims' },
   team_lead: { id: 'team_lead', name: 'Carlo Reyes', role: 'team_lead', tier: 'L2', teamId: 'team-cs', teamName: 'Customer Support' },

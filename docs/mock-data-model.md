@@ -71,9 +71,27 @@ interface Ticket {
   firstResponseAt?: string; resolvedAt?: string; escalatedAt?: string;
 }
 
-// The GGX tracking number lives on RelatedTransaction (a ticket links a
-// transaction by id, product rule #14) and is DENORMALIZED onto the list view
-// model so every ticket table can show it without an extra lookup.
+// GGX Business+ linked order (M22): the stable external id + a snapshot captured
+// at submission. Snapshot-first — the ticket renders from this even when the
+// provider is down or the order was deleted upstream. Never a HeyQ primary key.
+type ExternalSourceSystem = 'ggx_business_plus';
+interface LinkedOrder {
+  externalOrderId: string;         // stable Business+ id — reference data only
+  trackingNumber: string;
+  capturedAt: string;
+  snapshot: {
+    shipmentStatus: ShipmentStatus;
+    bookingDate: string;
+    senderSummary: string;         // limited summaries, not contact records
+    recipientSummary: string;
+    destination?: string;
+  };
+}
+// Ticket additionally carries: sourceSystem?: ExternalSourceSystem; linkedOrder?: LinkedOrder;
+
+// The GGX tracking number resolves from the linked-order snapshot first, then
+// RelatedTransaction (rule #14), and is DENORMALIZED onto the list view model so
+// every ticket table can show it without an extra lookup.
 // Format: XXXX-XXXX-XXXX  →  /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/
 interface TicketListItem {
   ticket: Ticket;

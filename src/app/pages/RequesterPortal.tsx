@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Separator } from '../components/ui/Separator';
 import { Textarea } from '../components/ui/Textarea';
 import { StatusChip } from '../components/ticket/StatusChip';
+import { ShipmentStatusBadge } from '../components/ticket/badges';
 import { ConversationThread } from '../components/ticket/ConversationThread';
 import { BackToHelpLink, EmptyState, ErrorState, LoadingGrid } from '../components/help/HelpStates';
 
@@ -80,6 +81,25 @@ export function RequesterPortal() {
           <Detail label="Last updated" value={formatDate(ticket.updatedAt)} />
         </CardContent>
       </Card>
+
+      {/* Business+ linked order (M22): the snapshot saved with the ticket. The
+          token-scoped portal never calls the provider — nothing here can leak
+          another organization's data or break when Business+ is down. */}
+      {ticket.linkedOrder && (
+        <Card>
+          <CardHeader><CardTitle>Linked GGX order</CardTitle></CardHeader>
+          <CardContent className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <Detail label="Order" value={ticket.linkedOrder.externalOrderId} />
+            <Detail label="Tracking number" value={ticket.linkedOrder.trackingNumber} />
+            <div className="flex flex-col gap-1">
+              <span className="text-muted-foreground">Shipment when reported</span>
+              <span><ShipmentStatusBadge status={ticket.linkedOrder.snapshot.shipmentStatus} /></span>
+            </div>
+            <Detail label="Booked" value={formatDate(ticket.linkedOrder.snapshot.bookingDate)} />
+            <Detail label="Recipient" value={ticket.linkedOrder.snapshot.recipientSummary} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle>Conversation</CardTitle></CardHeader>

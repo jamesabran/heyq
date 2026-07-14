@@ -31,7 +31,9 @@ import {
   HOLD_REASON_LABELS,
   STATUS_LABELS,
   type ConcernType,
+  type ExternalSourceSystem,
   type HoldReason,
+  type LinkedOrder,
   type EscalationReason,
   type InternalNote,
   type MockAttachment,
@@ -46,6 +48,7 @@ import {
   type TimelineEvent,
 } from '../models/ticket';
 import { computeSlaSummary, isSlaAtRiskOrBreached } from './slaService';
+import { getOrderProvider, type OrderProviderIdentity } from './orderProvider';
 import { emit } from './notificationService';
 import { clone, makeId, nowIso, simulateLatency } from '../lib/mock';
 
@@ -87,6 +90,17 @@ export interface CreateTicketInput {
   orderRef?: string;
   attachments?: MockAttachment[];
   relatedTransactionId?: string;
+  /** Reuse an existing requester (an authenticated customer) instead of creating a guest. */
+  requesterId?: string;
+  /**
+   * Link a GGX Business+ order (M22). Authorization + snapshot capture happen at
+   * this boundary, not in the form — the identity must be allowed to see the
+   * order or creation fails.
+   */
+  businessPlusOrder?: {
+    identity: OrderProviderIdentity;
+    externalOrderId: string;
+  };
 }
 
 export interface CreateTicketResult {
@@ -118,7 +132,40 @@ export async function createTicket(input: CreateTicketInput): Promise<CreateTick
   const teamId = category?.defaultTeamId ?? 'team-cs';
   const now = nowIso();
 
-  const requester: Requester = {
+  // Resolve the Business+ order BEFORE creating anything: an unauthorized or
+  // unresolvable link must fail the whole submission, never half-create a ticket.
+  let sourceSystem: ExternalSourceSystem | undefined;
+  let linkedOrder: LinkedOrder | undefined;
+  if (input.businessPlusOrder) {
+    const res = await getOrderProvider().getAuthorizedOrder(
+      input.businessPlusOrder.identity,
+      input.businessPlusOrder.externalOrderId,
+    );
+    if (res.status === 'unavailable') {
+      throw new Error('GGX Business+ is unreachable right now. Try again, or submit without linking the order.');
+    }
+    if (res.status !== 'ok') {
+      throw new Error('This order is not available on your account, so it cannot be linked.');
+    }
+    sourceSystem = 'ggx_business_plus';
+    linkedOrder = {
+      externalOrderId: res.order.externalOrderId,
+      trackingNumber: res.order.trackingNumber,
+      capturedAt: now,
+      snapshot: {
+        shipmentStatus: res.order.shipmentStatus,
+        bookingDate: res.order.bookingDate,
+        senderSummary: res.order.senderSummary,
+        recipientSummary: res.order.recipientSummary,
+        destination: res.order.destination,
+      },
+    };
+  }
+
+  // An authenticated customer reuses their requester record so the ticket shows
+  // up in their portal history; anonymous submissions stay guests.
+  const existing = input.requesterId ? requesters.find((r) => r.id === input.requesterId) : undefined;
+  const requester: Requester = existing ?? {
     id: makeId('req'),
     name: input.name.trim(),
     email: input.email.trim(),
@@ -126,7 +173,7 @@ export async function createTicket(input: CreateTicketInput): Promise<CreateTick
     isGuest: true,
     brandId: BRAND,
   };
-  requesters.push(requester);
+  if (!existing) requesters.push(requester);
 
   const reference = nextReference();
   const ticket: Ticket = {
@@ -147,6 +194,8 @@ export async function createTicket(input: CreateTicketInput): Promise<CreateTick
     priority: 'normal',
     source: input.relatedTransactionId ? 'transaction' : 'web',
     relatedTransactionId: input.relatedTransactionId,
+    sourceSystem,
+    linkedOrder,
     slaPolicyId: 'sla-standard',
     createdAt: now,
     updatedAt: now,
@@ -399,11 +448,16 @@ export interface ListTicketsParams {
   sort?: 'updated' | 'created' | 'priority';
 }
 
-/** The GGX tracking number for a ticket's linked transaction, if it has one. */
-const trackingNumberFor = (ticket: Ticket): string | undefined =>
-  ticket.relatedTransactionId
+/**
+ * The GGX tracking number for a ticket: from its Business+ linked-order snapshot
+ * first (self-sufficient even when the provider is down), then the M13 linked
+ * transaction. Exported so requester-facing lists resolve it identically.
+ */
+export const trackingNumberFor = (ticket: Ticket): string | undefined =>
+  ticket.linkedOrder?.trackingNumber ??
+  (ticket.relatedTransactionId
     ? relatedTransactions.find((t) => t.id === ticket.relatedTransactionId)?.trackingNumber
-    : undefined;
+    : undefined);
 
 function toListItem(ticket: Ticket): TicketListItem {
   return {
