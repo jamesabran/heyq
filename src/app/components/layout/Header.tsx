@@ -9,10 +9,12 @@ import { BrandControl } from './BrandControl';
 interface HeaderProps {
   /** When set, shows a menu button (authenticated shell with a sidebar). */
   onToggleSidebar?: () => void;
+  /** Sidebar open state, for the toggle's aria-expanded. */
+  sidebarOpen?: boolean;
 }
 
 /** Top application bar: menu toggle, brand mark, disabled brand control, identity switcher, theme toggle. */
-export function Header({ onToggleSidebar }: HeaderProps) {
+export function Header({ onToggleSidebar, sidebarOpen }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur">
       {onToggleSidebar && (
@@ -22,6 +24,8 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           className="lg:hidden"
           onClick={onToggleSidebar}
           aria-label="Toggle navigation"
+          aria-expanded={sidebarOpen ?? false}
+          aria-controls="primary-navigation"
         >
           <IconMenu2 size={20} />
         </Button>

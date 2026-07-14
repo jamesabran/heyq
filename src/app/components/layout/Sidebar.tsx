@@ -29,7 +29,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <span className="text-lg font-semibold">HeyQ</span>
         </div>
 
-        <nav className="flex flex-col gap-5 p-3" aria-label="Primary">
+        <nav id="primary-navigation" className="flex flex-col gap-5 p-3" aria-label="Primary">
           {sections.length === 0 && (
             <p className="px-3 py-2 text-sm text-muted-foreground">
               No workspace access for the {ROLE_LABELS[identity.role]} role.
