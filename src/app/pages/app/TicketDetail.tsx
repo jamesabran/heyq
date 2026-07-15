@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
+import { IconClipboardCheck } from '@tabler/icons-react';
 import {
   addAgentReply,
   addInternalNote,
@@ -16,8 +17,9 @@ import {
   type ResolutionType,
 } from '../../models/ticket';
 import { formatDate, formatDateTime } from '../../lib/utils';
+import { hasRole, REVIEW_ROLES } from '../../lib/roles';
 import { Alert } from '../../components/ui/Alert';
-import { Button } from '../../components/ui/Button';
+import { Button, buttonVariants } from '../../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
@@ -79,6 +81,16 @@ export function TicketDetail() {
           <p className="text-sm text-muted-foreground">{ticket.reference}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Supervisor entry point into the quality review workspace. Only offered
+              when there is an assigned agent to review, and only to reviewers. */}
+          {ticket.assigneeId && hasRole(identity.role, REVIEW_ROLES) && (
+            <Link
+              to={`/app/reviews/${ticket.id}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              <IconClipboardCheck size={15} /> Start quality review
+            </Link>
+          )}
           {/* Reopened is a flag, so it sits beside the status rather than replacing it. */}
           {ticket.reopenedAt && (
             <Badge variant="outline" title={`Reopened ${formatDate(ticket.reopenedAt)}`}>Reopened</Badge>

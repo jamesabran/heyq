@@ -21,6 +21,9 @@ import {
 } from './pages/app/queues';
 import { TicketDetail } from './pages/app/TicketDetail';
 import { NewTicket } from './pages/app/NewTicket';
+import { QualityReviews } from './pages/app/QualityReviews';
+import { ReviewWorkspace } from './pages/app/ReviewWorkspace';
+import { AgentProfile } from './pages/app/AgentProfile';
 import { Overview } from './pages/app/Overview';
 import { Dashboard } from './pages/app/Dashboard';
 import { NotificationsPage } from './pages/app/NotificationsPage';
@@ -40,6 +43,7 @@ import {
   KB_ROLES,
   LEAD_ROLES,
   OVERVIEW_ROLES,
+  REVIEW_ROLES,
   type Role,
 } from './lib/roles';
 
@@ -86,6 +90,9 @@ export const routes: RouteObject[] = [
       { path: 'views', element: guard(AGENT_ROLES, <SavedViews />) },
       { path: 'notifications', element: guard(AGENT_ROLES, <NotificationsPage />) },
       { path: 'supervisor', element: guard(LEAD_ROLES, <Dashboard scope="team" />) },
+      { path: 'reviews', element: guard(REVIEW_ROLES, <QualityReviews />) },
+      { path: 'reviews/:ticketId', element: guard(REVIEW_ROLES, <ReviewWorkspace />) },
+      { path: 'agents/:agentId', element: guard(REVIEW_ROLES, <AgentProfile />) },
       { path: 'reports', element: guard(LEAD_ROLES, <Dashboard scope="all" />) },
     ],
   },
