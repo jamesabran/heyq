@@ -105,6 +105,18 @@ export interface CreateTicketInput {
     identity: OrderProviderIdentity;
     externalOrderId: string;
   };
+  /**
+   * Pre-authorized Business+ context from the EMBEDDED Business+ app (the report
+   * drawer). Business+ owns OMS and authorizes the order itself, so the identity
+   * is trusted and the linked order is taken as given — HeyQ does not re-check it
+   * against its own mock order provider (which only stands in when Business+ is
+   * absent). Distinct from `businessPlusOrder`, which is HeyQ's own contact-form
+   * order picker and IS provider-authorized.
+   */
+  businessPlusContext?: {
+    identity: OrderProviderIdentity;
+    linkedOrder?: LinkedOrder;
+  };
 }
 
 export interface CreateTicketResult {
@@ -180,6 +192,21 @@ export async function createTicket(storeId: string, input: CreateTicketInput): P
       customerVisible: true,
       requesterExternalUserId: input.businessPlusOrder.identity.externalUserId,
       requesterExternalOrgId: input.businessPlusOrder.identity.externalOrgId,
+      customerNotified: true,
+    };
+  } else if (input.businessPlusContext) {
+    // Trusted embedded-app path: Business+ already authorized the order via OMS.
+    const ctx = input.businessPlusContext;
+    if (ctx.linkedOrder) {
+      sourceSystem = 'ggx_business_plus';
+      linkedOrder = { ...ctx.linkedOrder, capturedAt: ctx.linkedOrder.capturedAt || now };
+    }
+    provenance = {
+      creatorType: 'requester',
+      sourceChannel: 'business_plus',
+      customerVisible: true,
+      requesterExternalUserId: ctx.identity.externalUserId,
+      requesterExternalOrgId: ctx.identity.externalOrgId,
       customerNotified: true,
     };
   }

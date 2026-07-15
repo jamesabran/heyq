@@ -43,7 +43,7 @@ A request to an `internal` route from a **known customer origin** is refused wit
 customer app cannot reach agent/internal endpoints. Server-to-server and test
 callers send no `Origin` and are unaffected; the agent frontend is not a customer
 origin. `public` routes: `GET /health`, `GET /customer/tickets`,
-`GET /customer/tickets/:id`, `POST /tickets/:id/messages`, `POST /tickets/:id/reopen`.
+`GET /customer/tickets/:id`, `POST /customer/tickets` (create), `POST /tickets/:id/messages`, `POST /tickets/:id/reopen`.
 
 ## Vercel (frontend) settings
 

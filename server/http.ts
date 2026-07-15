@@ -396,6 +396,25 @@ const routes: Route[] = [
     },
     access: 'public',
   },
+  {
+    // Ticket creation from the embedded Business+ report drawer. Returns the
+    // customer projection only. Identity + linked order are trusted (Business+
+    // owns OMS authorization).
+    method: 'POST', pattern: '/customer/tickets',
+    handler: async (req, _p, _q, storeId) => {
+      const b = await readJsonBody(req);
+      return customer.createCustomerTicket(storeId, {
+        identity: { externalUserId: b.externalUserId ?? '', externalOrgId: b.externalOrgId ?? '' },
+        name: b.name ?? '',
+        email: b.email ?? '',
+        concernType: b.concernType ?? undefined,
+        subject: b.subject ?? '',
+        description: b.description ?? '',
+        linkedOrder: b.linkedOrder ?? undefined,
+      });
+    },
+    access: 'public',
+  },
 ];
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {

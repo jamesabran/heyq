@@ -29,19 +29,26 @@ afterAll(() => new Promise<void>((resolve, reject) => server.close((e) => (e ? r
 interface Res {
   status: number;
   headers: Record<string, string | string[] | undefined>;
+  body: string;
 }
 
-/** One raw request, with an optional Origin, returning status + headers. */
-function call(method: string, path: string, origin?: string): Promise<Res> {
+/** One raw request, with an optional Origin and JSON body, returning status/headers/body. */
+function call(method: string, path: string, origin?: string, json?: unknown): Promise<Res> {
   return new Promise((resolve, reject) => {
-    const req = httpRequest(
-      { host: '127.0.0.1', port, method, path, headers: origin ? { Origin: origin } : {} },
-      (res) => {
-        res.resume(); // drain
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers }));
-      },
-    );
+    const payload = json === undefined ? undefined : JSON.stringify(json);
+    const headers: Record<string, string> = {};
+    if (origin) headers.Origin = origin;
+    if (payload !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = String(Buffer.byteLength(payload));
+    }
+    const req = httpRequest({ host: '127.0.0.1', port, method, path, headers }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body }));
+    });
     req.on('error', reject);
+    if (payload !== undefined) req.write(payload);
     req.end();
   });
 }
@@ -60,6 +67,39 @@ describe('customer origin (GGX Business+)', () => {
     const reopen = await call('POST', '/api/tickets/nope/reopen', CUSTOMER_ORIGIN);
     expect(reply.status).not.toBe(403);
     expect(reopen.status).not.toBe(403);
+  });
+
+  it('creates a ticket via POST /customer/tickets and gets back the customer projection', async () => {
+    const identity = { externalUserId: 'max@email.com', externalOrgId: 'main' };
+    const res = await call('POST', '/api/customer/tickets', CUSTOMER_ORIGIN, {
+      ...identity,
+      name: 'Max Corp Admin',
+      email: 'max@email.com',
+      concernType: 'delivery_delay',
+      subject: 'Parcel delayed',
+      description: 'This order has not moved in days.',
+      linkedOrder: {
+        externalOrderId: 'GGX-2026-90008',
+        trackingNumber: 'GGX-2026-90008',
+        capturedAt: new Date().toISOString(),
+        snapshot: { shipmentStatus: 'failed_delivery', bookingDate: '2026-05-31', route: 'Metro Manila → Pasig City' },
+      },
+    });
+    expect(res.status).toBe(200);
+    const ticket = JSON.parse(res.body);
+    expect(ticket.subject).toBe('Parcel delayed');
+    expect(ticket.status).toBe('open');
+    expect(ticket.linkedOrder.trackingNumber).toBe('GGX-2026-90008');
+    // Customer projection only — no agent-only fields.
+    const blob = res.body.toLowerCase();
+    for (const leaked of ['assigneeid', 'internalnote', 'escalationstate', 'supporttier', 'slapolicyid', 'teamid']) {
+      expect(blob.includes(leaked), `must not leak ${leaked}`).toBe(false);
+    }
+
+    // It is now visible to the same identity via the read surface.
+    const list = await call('GET', `/api/customer/tickets?externalUserId=${identity.externalUserId}&externalOrgId=${identity.externalOrgId}`, CUSTOMER_ORIGIN);
+    const ids = JSON.parse(list.body).map((t: { id: string }) => t.id);
+    expect(ids).toContain(ticket.id);
   });
 
   it('is refused on agent/internal routes with 403', async () => {
