@@ -424,20 +424,32 @@ export const STATUS_DESCRIPTIONS: Record<TicketStatus, string> = {
   closed: 'Finalized',
 };
 
-export type BadgeVariant = 'default' | 'outline' | 'brand' | 'destructive' | 'success' | 'warning' | 'info';
+export type BadgeVariant =
+  | 'default'
+  | 'outline'
+  | 'brand'
+  | 'destructive'
+  | 'success'
+  | 'warning'
+  | 'info'
+  | 'info-solid'
+  | 'teal';
 
 /**
- * Status carries SEMANTIC colour, never brand colour: blue for active work, green
- * for resolved, grey for closed, restrained amber for blocked. In particular
- * In Progress is blue, not brand red — red means urgent/breached/failed, and a
- * ticket simply being worked on is neither.
+ * Status carries SEMANTIC colour, never brand colour: blue tones for active
+ * work (each stage a step deeper — soft for New, solid for Open, teal for In
+ * Progress), green for resolved, grey for closed, restrained amber for
+ * blocked. In particular In Progress is blue/teal, not brand red — red means
+ * urgent/breached/failed, and a ticket simply being worked on is neither.
  */
 export function statusBadgeVariant(status: TicketStatus): BadgeVariant {
   switch (status) {
     case 'new':
-    case 'open':
-    case 'in_progress':
       return 'info';
+    case 'open':
+      return 'info-solid';
+    case 'in_progress':
+      return 'teal';
     case 'on_hold':
       return 'warning';
     case 'resolved':

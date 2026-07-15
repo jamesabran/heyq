@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
   CONCERN_TYPE_LABELS,
   type PaymentStatus,
@@ -111,12 +111,24 @@ function TicketRow({
   showTransaction: boolean;
 }) {
   const { ticket, requesterName, teamName, assigneeName, trackingNumber, sla } = item;
+  const navigate = useNavigate();
+
+  // The whole row opens the ticket, not just the reference link — but a click
+  // that starts on an interactive element (the link itself, a future menu/
+  // checkbox) keeps its own behavior instead of also navigating.
+  const handleRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('a, button, input, select, textarea, [role="button"], [role="menuitem"]')) return;
+    navigate(`/app/tickets/${ticket.id}`);
+  };
 
   return (
-    // The row is interactive as a whole (hover + keyboard focus travel through the
-    // reference link), but it is never tinted by state — an urgent ticket is loud
-    // through its badges, not by turning the row red.
-    <tr className="border-b border-border transition-colors last:border-0 hover:bg-accent/50 focus-within:bg-accent/50">
+    // Never tinted by state — an urgent ticket is loud through its badges, not
+    // by turning the row red.
+    <tr
+      onClick={handleRowClick}
+      className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-accent/50 focus-within:bg-accent/50"
+    >
       <td className="px-3 py-2.5 align-top">
         <div className="flex flex-col gap-0.5">
           <Link
@@ -180,7 +192,7 @@ function TicketRow({
       </td>
 
       <td className="px-3 py-2.5 align-top">
-        <SlaSummaryBadge sla={sla} />
+        <SlaSummaryBadge sla={sla} now={now} />
       </td>
 
       <td className="hidden px-3 py-2.5 align-top text-muted-foreground lg:table-cell">

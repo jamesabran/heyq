@@ -142,10 +142,10 @@ describe('on hold', () => {
 
 describe('semantic status colours', () => {
   it('never paints an in-progress ticket red, and reserves red for real trouble', () => {
-    // In Progress is active work, not an error — blue (info), never brand/destructive.
-    expect(statusBadgeVariant('in_progress')).toBe('info');
+    // In Progress is active work, not an error — blue/teal, never brand/destructive.
+    expect(statusBadgeVariant('in_progress')).toBe('teal');
     expect(statusBadgeVariant('new')).toBe('info');
-    expect(statusBadgeVariant('open')).toBe('info');
+    expect(statusBadgeVariant('open')).toBe('info-solid');
     expect(statusBadgeVariant('on_hold')).toBe('warning');
     expect(statusBadgeVariant('resolved')).toBe('success');
     expect(statusBadgeVariant('closed')).toBe('default');

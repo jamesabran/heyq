@@ -8,7 +8,10 @@ import {
 } from '../../models/ticket';
 
 /**
- * Ticket status as a subtle chip. Status is independent of escalation state.
+ * Ticket status as a subtle capsule. Status is independent of escalation state.
+ *
+ * Every status renders at the same fixed width, centered, so the column scans
+ * as a straight line regardless of label length ("New" vs. "In Progress").
  *
  * An on-hold ticket names what it is blocked on: the reason is appended to the
  * accessible label (and the tooltip) rather than shown as a second pill, so the
@@ -19,7 +22,11 @@ export function StatusChip({ status, holdReason }: { status: TicketStatus; holdR
   const reason = status === 'on_hold' && holdReason ? HOLD_REASON_LABELS[holdReason] : undefined;
 
   return (
-    <Badge variant={statusBadgeVariant(status)} title={reason ? `${label} — ${reason}` : label}>
+    <Badge
+      variant={statusBadgeVariant(status)}
+      title={reason ? `${label} — ${reason}` : label}
+      className="w-28 justify-center text-center"
+    >
       {label}
       {reason && <span className="sr-only"> — {reason}</span>}
     </Badge>

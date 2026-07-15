@@ -1,4 +1,10 @@
-import { IconArrowBigUpLine } from '@tabler/icons-react';
+import {
+  IconAlertTriangle,
+  IconArrowBigUpLine,
+  IconCircleCheck,
+  IconClockExclamation,
+  IconPlayerPause,
+} from '@tabler/icons-react';
 import { Badge, type BadgeProps } from '../ui/Badge';
 import { cn } from '../../lib/utils';
 import {
@@ -24,17 +30,18 @@ type Variant = NonNullable<BadgeProps['variant']>;
 /**
  * BADGE HIERARCHY (docs/design-system-strategy.md).
  *
- * A row carries status, priority, and SLA at once. If all three are strong pills
- * the eye can't tell which one is asking for action, so only the states that
- * actually need attention are loud:
+ * A row carries status, priority, and SLA at once. Each dimension gets a
+ * distinct visual language so they scan independently rather than competing:
  *
- *   Status   — always a subtle chip (semantic, low-saturation).
- *   Priority — Normal is plain text, High is amber text, only Urgent is a red pill.
- *   SLA      — On track is muted text, At risk is amber, only Breached is red.
+ *   Status   — a fixed-width capsule per status (never colour-only — the label
+ *              is always present).
+ *   Priority — a small colour indicator + text, never a filled pill.
+ *   SLA      — a coloured icon + text, with the remaining/overdue time shown
+ *              for On track / At risk / Breached.
  *
- * The result: an ordinary row is quiet, and urgent / at-risk / breached / escalated
- * rows stand out on their own. Colour is never the only signal — every state keeps
- * its written label.
+ * Colour is never the only signal — every state keeps its written label — and
+ * none of these use the brand colour, so status/priority/SLA read the same in
+ * every theme.
  */
 
 const SLA_LABELS: Record<SlaState, string> = {
@@ -47,11 +54,26 @@ const SLA_LABELS: Record<SlaState, string> = {
 
 const SEVERITY_ORDER: SlaState[] = ['breached', 'at_risk', 'paused', 'on_track', 'met'];
 
+/** The more severe of the two SLA targets (for compact list display). */
+export function worstSlaTarget(sla: SlaSummary): SlaTargetSummary {
+  return [sla.firstResponse, sla.resolution].sort(
+    (a, b) => SEVERITY_ORDER.indexOf(a.state) - SEVERITY_ORDER.indexOf(b.state),
+  )[0];
+}
+
 /** The most severe of the two SLA targets (for compact list display). */
 export function worstSlaState(sla: SlaSummary): SlaState {
-  return [sla.firstResponse.state, sla.resolution.state].sort(
-    (a, b) => SEVERITY_ORDER.indexOf(a) - SEVERITY_ORDER.indexOf(b),
-  )[0];
+  return worstSlaTarget(sla).state;
+}
+
+/** "2h 14m left" / "-34m" against the simulated clock. */
+function formatSlaTime(dueAt: string, nowMs: number): string {
+  const diffMs = new Date(dueAt).getTime() - nowMs;
+  const totalMinutes = Math.round(Math.abs(diffMs) / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const compact = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  return diffMs >= 0 ? `${compact} left` : `-${compact}`;
 }
 
 /**
@@ -76,49 +98,57 @@ export function SlaBadge({ target, label }: { target: SlaTargetSummary; label?: 
   );
 }
 
-/**
- * Compact worst-case SLA for a list row. Only At risk and Breached earn a pill —
- * "met" and "paused" are real internal states but they are not what an agent is
- * scanning for, so they render as quiet text.
- */
-export function SlaSummaryBadge({ sla }: { sla: SlaSummary }) {
-  const worst = worstSlaState(sla);
+const SLA_ICON_META: Record<SlaState, { icon: typeof IconCircleCheck; className: string }> = {
+  on_track: { icon: IconCircleCheck, className: 'text-green-600 dark:text-green-400' },
+  at_risk: { icon: IconClockExclamation, className: 'text-amber-700 dark:text-amber-400' },
+  breached: { icon: IconAlertTriangle, className: 'text-destructive' },
+  met: { icon: IconCircleCheck, className: 'text-green-600 dark:text-green-400' },
+  paused: { icon: IconPlayerPause, className: 'text-muted-foreground' },
+};
 
-  if (worst === 'breached') return <Badge variant="destructive">Breached</Badge>;
-  if (worst === 'at_risk') return <Badge variant="warning">At risk</Badge>;
+/** Only these states carry a countdown/overdue time; Met and Paused are just labels. */
+const SLA_STATES_WITH_TIME: SlaState[] = ['on_track', 'at_risk', 'breached'];
+
+/**
+ * Compact worst-case SLA for a list row: a coloured icon, the label, and — for
+ * On track / At risk / Breached — the remaining or overdue time against the
+ * simulated clock. Met and Paused are real internal states an agent isn't
+ * scanning for, so they stay quiet (muted icon, no time).
+ */
+export function SlaSummaryBadge({ sla, now }: { sla: SlaSummary; now: number }) {
+  const target = worstSlaTarget(sla);
+  const { icon: Icon, className } = SLA_ICON_META[target.state];
+  const time = target.dueAt && SLA_STATES_WITH_TIME.includes(target.state)
+    ? formatSlaTime(target.dueAt, now)
+    : undefined;
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-      <span
-        aria-hidden="true"
-        className={cn(
-          'size-1.5 rounded-full',
-          worst === 'paused' ? 'bg-muted-foreground/50' : 'bg-green-600 dark:bg-green-400',
-        )}
-      />
-      {SLA_LABELS[worst]}
+    <span className={cn('inline-flex items-center gap-1.5 text-sm', className)}>
+      <Icon size={14} aria-hidden="true" className="shrink-0" />
+      <span className="flex flex-col leading-tight">
+        <span className={time ? undefined : 'text-muted-foreground'}>{SLA_LABELS[target.state]}</span>
+        {time && <span className="text-xs">{time}</span>}
+      </span>
     </span>
   );
 }
 
-const PRIORITY_LABELS: Record<TicketPriority, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  normal: 'Normal',
+const PRIORITY_META: Record<TicketPriority, { dotClassName: string; label: string }> = {
+  urgent: { dotClassName: 'bg-red-500', label: 'Urgent' },
+  high: { dotClassName: 'bg-amber-500', label: 'High' },
+  normal: { dotClassName: 'bg-gray-400 dark:bg-gray-500', label: 'Normal' },
 };
 
-/** Only Urgent is loud; High is restrained amber; Normal is plain text. */
+/**
+ * Priority as a compact colour indicator + label — never a filled pill, so it
+ * doesn't compete with status for a row's attention.
+ */
 export function PriorityBadge({ priority }: { priority: TicketPriority }) {
-  if (priority === 'urgent') return <Badge variant="destructive">Urgent</Badge>;
-
+  const meta = PRIORITY_META[priority];
   return (
-    <span
-      className={cn(
-        'text-sm',
-        priority === 'high' ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground',
-      )}
-    >
-      {PRIORITY_LABELS[priority]}
+    <span className="inline-flex items-center gap-1.5 text-sm text-foreground">
+      <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-sm', meta.dotClassName)} />
+      {meta.label}
     </span>
   );
 }
