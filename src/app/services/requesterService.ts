@@ -1,17 +1,15 @@
 /**
- * requesterService — resolves the simulated secure-link (access token) for the
- * requester portal. This is the ONLY way to open a ticket in the portal; a
- * ticket reference alone does not resolve here (docs/product-rules.md #6).
+ * requesterService — thin HTTP client over server/requester.ts. Resolves the
+ * simulated secure-link (access token) for the requester portal; a ticket
+ * reference alone never resolves here (docs/product-rules.md #6).
  *
- * Future API endpoints:
- *   GET /portal/:token   → resolveAccessToken
- *   GET /me/tickets      → listTicketsForRequester
+ * Endpoints:
+ *   GET /portal/:token           → resolveAccessToken
+ *   GET /requesters/:id/profile  → getRequesterProfile
+ *   GET /requesters/:id/tickets  → listTicketsForRequester
  */
-import { requesterAccess, requesters, tickets } from '../data/tickets';
-import { teams, ticketCategories } from '../data/catalog';
-import { trackingNumberFor } from './ticketService';
 import type { Requester, Ticket } from '../models/ticket';
-import { clone, simulateLatency } from '../lib/mock';
+import { ApiError, apiGet } from '../lib/apiClient';
 
 export interface PortalView {
   ticket: Ticket;
@@ -21,66 +19,33 @@ export interface PortalView {
   subcategoryName?: string;
 }
 
-/** One of the requester's own tickets, with the secure link that opens it. */
 export interface RequesterTicketSummary {
   ticket: Ticket;
   categoryName: string;
-  /** The GGX tracking number, same as every agent-facing list; absent on non-shipment tickets. */
   trackingNumber?: string;
-  /** Undefined when no secure link was ever issued — the row then isn't openable. */
   accessToken?: string;
 }
 
-/** Resolve an opaque access token to the portal view, or null if unknown. */
 export async function resolveAccessToken(token: string): Promise<PortalView | null> {
-  await simulateLatency();
-
-  const access = requesterAccess.find((a) => a.accessToken === token);
-  if (!access) return null;
-
-  const ticket = tickets.find((t) => t.id === access.ticketId);
-  const requester = ticket && requesters.find((r) => r.id === ticket.requesterId);
-  if (!ticket || !requester) return null;
-
-  const category = ticketCategories.find((c) => c.id === ticket.categoryId);
-  const subcategory = category?.subcategories.find((s) => s.id === ticket.subcategoryId);
-  const team = teams.find((t) => t.id === ticket.teamId);
-
-  return clone({
-    ticket,
-    requester,
-    teamName: team?.name ?? 'Unassigned',
-    categoryName: category?.name ?? 'Uncategorized',
-    subcategoryName: subcategory?.name,
-  });
+  try {
+    return await apiGet<PortalView>(`/portal/${token}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
 }
 
-/** Contact details for prefilling forms when a known requester is signed in. */
 export async function getRequesterProfile(
   requesterId: string,
 ): Promise<Pick<Requester, 'name' | 'email' | 'mobile'> | null> {
-  await simulateLatency();
-  const r = requesters.find((x) => x.id === requesterId);
-  return r ? clone({ name: r.name, email: r.email, mobile: r.mobile }) : null;
+  try {
+    return await apiGet<Pick<Requester, 'name' | 'email' | 'mobile'>>(`/requesters/${requesterId}/profile`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
 }
 
-/**
- * The requester's own tickets, newest activity first, each with its access
- * token so the row can open the portal. Requesters never see agent surfaces:
- * this returns no assignee, no internal notes, and no team routing.
- */
 export async function listTicketsForRequester(requesterId: string): Promise<RequesterTicketSummary[]> {
-  await simulateLatency();
-
-  return tickets
-    .filter((t) => t.requesterId === requesterId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .map((ticket) =>
-      clone({
-        ticket,
-        categoryName: ticketCategories.find((c) => c.id === ticket.categoryId)?.name ?? 'Uncategorized',
-        trackingNumber: trackingNumberFor(ticket),
-        accessToken: requesterAccess.find((a) => a.ticketId === ticket.id)?.accessToken,
-      }),
-    );
+  return apiGet<RequesterTicketSummary[]>(`/requesters/${requesterId}/tickets`);
 }

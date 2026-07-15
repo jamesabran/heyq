@@ -1,5 +1,10 @@
-// Ticket mock state (module state, mutated by ticketService). Components must
-// access this only through services.
+// Ticket seed data. As of M23/M24, HeyQ's mock API server (server/seed.ts) is
+// the RUNTIME source of ticket state — ticketService.ts no longer imports this
+// file, and nothing here is mutated any more. It survives only as a read-only
+// fixture for ticketFields.test.ts's seed-coverage assertions (all six core
+// statuses, hold reasons, escalation, reopened, priority/team/assignee spread),
+// which check properties of the seed data itself rather than live server
+// responses. Keep it in sync with server/seed.ts's copy if either changes.
 //
 // The seed deliberately covers every state the UI has to render: all six core
 // statuses, both an external and an internal hold reason, an escalated ticket, a
@@ -18,6 +23,12 @@ import type {
 
 const BRAND = 'ggx';
 
+// M23 provenance/visibility defaults for this file's plain HeyQ-web tickets —
+// none of them have a Business+ identity, so none can be customer-visible.
+// (This file is superseded by server/seed.ts once ticketService moves
+// server-side; kept in sync here only so the current build stays green.)
+const heyqWeb = { creatorType: 'requester', sourceChannel: 'heyq_web', customerVisible: false } as const;
+
 export const requesters: Requester[] = [
   { id: 'req-seed-1', name: 'Liza Aquino', email: 'liza.aquino@example.com', mobile: '+63 917 555 0110', isGuest: true, brandId: BRAND },
   { id: 'req-seed-2', name: 'Marco Reyes', email: 'marco.reyes@example.com', mobile: '+63 917 555 0121', isGuest: true, brandId: BRAND },
@@ -35,7 +46,7 @@ export const requesters: Requester[] = [
 
 export const tickets: Ticket[] = [
   {
-    id: 'tkt-seed-1', reference: 'HQ-2026-0001', brandId: BRAND, requesterId: 'req-seed-1',
+    id: 'tkt-seed-1', reference: 'HQ-2026-0001', brandId: BRAND, requesterId: 'req-seed-1', ...heyqWeb,
     subject: 'Where is my parcel?', description: 'My parcel has not moved in three days.',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-status', concernType: 'delivery_delay',
     status: 'on_hold', holdReason: 'waiting_requester',
@@ -44,7 +55,7 @@ export const tickets: Ticket[] = [
     createdAt: '2026-07-08T02:15:00Z', updatedAt: '2026-07-09T06:40:00Z', firstResponseAt: '2026-07-08T03:00:00Z',
   },
   {
-    id: 'tkt-seed-2', reference: 'HQ-2026-0002', brandId: BRAND, requesterId: 'req-seed-2',
+    id: 'tkt-seed-2', reference: 'HQ-2026-0002', brandId: BRAND, requesterId: 'req-seed-2', ...heyqWeb,
     subject: 'COD remittance not received', description: 'I have not received my COD remittance for last week.',
     categoryId: 'cat-cod', subcategoryId: 'sub-cod-remit', concernType: 'remittance_concern',
     status: 'resolved', escalationState: 'none', supportTier: 'L2', teamId: 'team-payments',
@@ -53,7 +64,7 @@ export const tickets: Ticket[] = [
   },
   // Unassigned, team-cs, fresh — first-response on track.
   {
-    id: 'tkt-seed-3', reference: 'HQ-2026-0003', brandId: BRAND, requesterId: 'req-seed-3',
+    id: 'tkt-seed-3', reference: 'HQ-2026-0003', brandId: BRAND, requesterId: 'req-seed-3', ...heyqWeb,
     subject: 'Rider did not arrive for pickup', description: 'I booked a pickup this morning but no rider came.',
     categoryId: 'cat-pickup', subcategoryId: 'sub-pu-missed', concernType: 'pickup_issue',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -62,7 +73,7 @@ export const tickets: Ticket[] = [
   },
   // Assigned to l1_agent, in progress — first-response met, resolution on track.
   {
-    id: 'tkt-seed-4', reference: 'HQ-2026-0004', brandId: BRAND, requesterId: 'req-seed-4',
+    id: 'tkt-seed-4', reference: 'HQ-2026-0004', brandId: BRAND, requesterId: 'req-seed-4', ...heyqWeb,
     subject: 'App crashes when opening bookings', description: 'The app closes whenever I tap on My Bookings.',
     categoryId: 'cat-technical', subcategoryId: 'sub-tech-app', concernType: 'booking_issue',
     status: 'in_progress', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -71,7 +82,7 @@ export const tickets: Ticket[] = [
   },
   // Assigned to l1_agent, open, no first response yet — first-response BREACHED.
   {
-    id: 'tkt-seed-5', reference: 'HQ-2026-0005', brandId: BRAND, requesterId: 'req-seed-5',
+    id: 'tkt-seed-5', reference: 'HQ-2026-0005', brandId: BRAND, requesterId: 'req-seed-5', ...heyqWeb,
     subject: 'Cannot log in to my account', description: 'I keep getting an error when signing in.',
     categoryId: 'cat-account', subcategoryId: 'sub-acc-access', concernType: 'account_concern',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -80,7 +91,7 @@ export const tickets: Ticket[] = [
   },
   // Unassigned, team-claims, aging — first-response AT RISK.
   {
-    id: 'tkt-seed-6', reference: 'HQ-2026-0006', brandId: BRAND, requesterId: 'req-seed-6',
+    id: 'tkt-seed-6', reference: 'HQ-2026-0006', brandId: BRAND, requesterId: 'req-seed-6', ...heyqWeb,
     subject: 'Claim for damaged parcel', description: 'My parcel arrived damaged and I want to file a claim.',
     categoryId: 'cat-claims', subcategoryId: 'sub-cl-damaged', concernType: 'damaged_parcel',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-claims',
@@ -89,7 +100,7 @@ export const tickets: Ticket[] = [
   },
   // Escalated to L2 (Claims) — status stays in_progress; resolution BREACHED.
   {
-    id: 'tkt-seed-7', reference: 'HQ-2026-0007', brandId: BRAND, requesterId: 'req-seed-3',
+    id: 'tkt-seed-7', reference: 'HQ-2026-0007', brandId: BRAND, requesterId: 'req-seed-3', ...heyqWeb,
     subject: 'Lost parcel — high value', description: 'A high-value parcel has been missing for over a week.',
     categoryId: 'cat-claims', subcategoryId: 'sub-cl-lost', concernType: 'missing_parcel',
     status: 'in_progress', escalationState: 'escalated', supportTier: 'L2', teamId: 'team-claims',
@@ -98,7 +109,7 @@ export const tickets: Ticket[] = [
   },
   // Assigned to l1_agent, pending requester — resolution clock PAUSED.
   {
-    id: 'tkt-seed-8', reference: 'HQ-2026-0008', brandId: BRAND, requesterId: 'req-seed-3',
+    id: 'tkt-seed-8', reference: 'HQ-2026-0008', brandId: BRAND, requesterId: 'req-seed-3', ...heyqWeb,
     subject: 'Question about my invoice', description: 'Could you clarify a charge on my latest invoice?',
     categoryId: 'cat-general', subcategoryId: 'sub-gen-info', concernType: 'payment_issue',
     status: 'on_hold', holdReason: 'waiting_requester',
@@ -109,7 +120,7 @@ export const tickets: Ticket[] = [
   // ── M13 transaction-context scenarios (each links a GGX transaction) ──────────
   // Parcel marked delivered but not received.
   {
-    id: 'tkt-seed-9', reference: 'HQ-2026-0009', brandId: BRAND, requesterId: 'req-seed-7',
+    id: 'tkt-seed-9', reference: 'HQ-2026-0009', brandId: BRAND, requesterId: 'req-seed-7', ...heyqWeb,
     subject: 'Parcel marked delivered but I never received it', description: 'Tracking says delivered yesterday but nothing arrived.',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-status', concernType: 'missing_parcel',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -118,7 +129,7 @@ export const tickets: Ticket[] = [
   },
   // Incorrect COD amount — ON HOLD on a third party (the rider's cash recon).
   {
-    id: 'tkt-seed-10', reference: 'HQ-2026-0010', brandId: BRAND, requesterId: 'req-seed-8',
+    id: 'tkt-seed-10', reference: 'HQ-2026-0010', brandId: BRAND, requesterId: 'req-seed-8', ...heyqWeb,
     subject: 'COD amount collected was higher than my order', description: 'The rider collected ₱2,000 but my order was ₱1,750.',
     categoryId: 'cat-cod', subcategoryId: 'sub-cod-amount', concernType: 'cod_concern',
     status: 'on_hold', holdReason: 'waiting_third_party',
@@ -128,7 +139,7 @@ export const tickets: Ticket[] = [
   },
   // Failed delivery with an unclear reason.
   {
-    id: 'tkt-seed-11', reference: 'HQ-2026-0011', brandId: BRAND, requesterId: 'req-seed-9',
+    id: 'tkt-seed-11', reference: 'HQ-2026-0011', brandId: BRAND, requesterId: 'req-seed-9', ...heyqWeb,
     subject: 'Delivery failed but no reason was given', description: 'I got a failed delivery notice with no explanation.',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-late', concernType: 'delivery_delay',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -137,7 +148,7 @@ export const tickets: Ticket[] = [
   },
   // Returned parcel / disputed return fee.
   {
-    id: 'tkt-seed-12', reference: 'HQ-2026-0012', brandId: BRAND, requesterId: 'req-seed-10',
+    id: 'tkt-seed-12', reference: 'HQ-2026-0012', brandId: BRAND, requesterId: 'req-seed-10', ...heyqWeb,
     subject: 'Disputing a return fee on my parcel', description: 'My parcel was returned and I was charged a return fee I do not agree with.',
     categoryId: 'cat-returns', subcategoryId: 'sub-ret-status', concernType: 'general_inquiry',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-claims',
@@ -146,7 +157,7 @@ export const tickets: Ticket[] = [
   },
   // Payment completed but booking not created.
   {
-    id: 'tkt-seed-13', reference: 'HQ-2026-0013', brandId: BRAND, requesterId: 'req-seed-11',
+    id: 'tkt-seed-13', reference: 'HQ-2026-0013', brandId: BRAND, requesterId: 'req-seed-11', ...heyqWeb,
     subject: 'Paid but my booking was never created', description: 'I paid for a shipment but no booking or pickup was scheduled.',
     categoryId: 'cat-payment', subcategoryId: 'sub-pay-failed', concernType: 'booking_issue',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-payments',
@@ -155,7 +166,7 @@ export const tickets: Ticket[] = [
   },
   // Incorrect recipient address — just arrived, NOT yet reviewed (status New).
   {
-    id: 'tkt-seed-14', reference: 'HQ-2026-0014', brandId: BRAND, requesterId: 'req-seed-12',
+    id: 'tkt-seed-14', reference: 'HQ-2026-0014', brandId: BRAND, requesterId: 'req-seed-12', ...heyqWeb,
     subject: 'Need to correct the recipient address', description: 'The delivery address on my parcel is wrong — please update it.',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-status', concernType: 'address_correction',
     status: 'new', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -165,7 +176,7 @@ export const tickets: Ticket[] = [
   // Closed out earlier on the simulated day — gives the Overview's "Resolved
   // today" counter (M19) a live value instead of a permanent zero.
   {
-    id: 'tkt-seed-15', reference: 'HQ-2026-0015', brandId: BRAND, requesterId: 'req-seed-5',
+    id: 'tkt-seed-15', reference: 'HQ-2026-0015', brandId: BRAND, requesterId: 'req-seed-5', ...heyqWeb,
     subject: 'Reschedule my delivery to tomorrow', description: 'Nobody will be home today — can the delivery move to tomorrow?',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-status', concernType: 'delivery_delay',
     status: 'resolved', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -176,7 +187,7 @@ export const tickets: Ticket[] = [
   },
   // CLOSED — finalized, no further action. Non-shipment (no tracking number).
   {
-    id: 'tkt-seed-16', reference: 'HQ-2026-0016', brandId: BRAND, requesterId: 'req-seed-6',
+    id: 'tkt-seed-16', reference: 'HQ-2026-0016', brandId: BRAND, requesterId: 'req-seed-6', ...heyqWeb,
     subject: 'How do I change my billing email?', description: 'I want invoices sent to a different address.',
     categoryId: 'cat-account', subcategoryId: 'sub-acc-access', concernType: 'account_concern',
     status: 'closed', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',
@@ -188,7 +199,7 @@ export const tickets: Ticket[] = [
   // REOPENED — the requester came back after we resolved it. Reopening is an
   // event, not a status: the ticket is back In Progress and carries `reopenedAt`.
   {
-    id: 'tkt-seed-17', reference: 'HQ-2026-0017', brandId: BRAND, requesterId: 'req-seed-9',
+    id: 'tkt-seed-17', reference: 'HQ-2026-0017', brandId: BRAND, requesterId: 'req-seed-9', ...heyqWeb,
     subject: 'Parcel still not delivered after the promised date', description: 'You closed my last ticket but the parcel never arrived.',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-late', concernType: 'delivery_delay',
     status: 'in_progress', reopenedAt: '2026-07-13T22:00:00Z',
@@ -202,6 +213,8 @@ export const tickets: Ticket[] = [
   // shows the change without ever touching the HeyQ ticket status.
   {
     id: 'tkt-seed-18', reference: 'HQ-2026-0018', brandId: BRAND, requesterId: 'req-seed-3',
+    creatorType: 'requester', sourceChannel: 'business_plus', customerVisible: true,
+    requesterExternalUserId: 'bp-user-nadia', requesterExternalOrgId: 'bp-org-acme', customerNotified: true,
     subject: 'Recipient reports the parcel has not moved', description: 'Our customer in Davao says tracking has shown In Transit for three days.',
     categoryId: 'cat-delivery', subcategoryId: 'sub-del-late', concernType: 'delivery_delay',
     status: 'open', escalationState: 'none', supportTier: 'L1', teamId: 'team-cs',

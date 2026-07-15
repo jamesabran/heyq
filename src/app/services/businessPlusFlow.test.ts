@@ -11,8 +11,11 @@ import {
   resolveTicket,
 } from './ticketService';
 import { getSummary } from './reportsService';
-import { getOrderProvider } from './orderProvider';
-import { businessPlusOrders, businessPlusProviderState } from '../data/businessPlusOrders';
+import {
+  getOrderProvider,
+  setBusinessPlusOrderShipmentStatusForTest,
+  setBusinessPlusProviderDown,
+} from './orderProvider';
 
 const nadiaBp = { externalUserId: 'bp-user-nadia', externalOrgId: 'bp-org-acme' };
 
@@ -29,8 +32,8 @@ function linkedInput(externalOrderId: string) {
   };
 }
 
-afterEach(() => {
-  businessPlusProviderState.available = true;
+afterEach(async () => {
+  await setBusinessPlusProviderDown(false);
 });
 
 describe('Business+ linked ticket — full lifecycle (M22)', () => {
@@ -102,7 +105,7 @@ describe('Business+ linked ticket — full lifecycle (M22)', () => {
   });
 
   it('fails cleanly when the provider is down at submission, and works without a link', async () => {
-    businessPlusProviderState.available = false;
+    await setBusinessPlusProviderDown(true);
 
     await expect(createTicket(linkedInput('BP-ORD-7001'))).rejects.toThrow(/unreachable/i);
 
@@ -117,7 +120,7 @@ describe('Business+ linked ticket — full lifecycle (M22)', () => {
 
   it('keeps a linked ticket fully usable from its snapshot after the provider dies', async () => {
     const { ticket } = await createTicket(linkedInput('BP-ORD-7004'));
-    businessPlusProviderState.available = false;
+    await setBusinessPlusProviderDown(true);
 
     // Live context is gone…
     expect((await getOrderProvider().getOrderForSupport('BP-ORD-7004')).status).toBe('unavailable');
@@ -134,11 +137,9 @@ describe('Business+ linked ticket — full lifecycle (M22)', () => {
     const { ticket } = await createTicket(linkedInput('BP-ORD-7002'));
     expect(ticket.linkedOrder?.snapshot.shipmentStatus).toBe('failed_delivery');
 
-    // The shipment moves on upstream (mutating the mock's module state stands in
-    // for Business+ updating its own record).
-    const record = businessPlusOrders.find((o) => o.externalOrderId === 'BP-ORD-7002')!;
-    const original = record.shipmentStatus;
-    record.shipmentStatus = 'returned';
+    // The shipment moves on upstream (mutating the store stands in for
+    // Business+ updating its own record).
+    await setBusinessPlusOrderShipmentStatusForTest('BP-ORD-7002', 'returned');
     try {
       const live = await getOrderProvider().getOrderForSupport('BP-ORD-7002');
       if (live.status !== 'ok') throw new Error('expected ok');
@@ -148,7 +149,7 @@ describe('Business+ linked ticket — full lifecycle (M22)', () => {
       expect(detail.ticket.status).toBe('open'); // untouched
       expect(detail.ticket.linkedOrder?.snapshot.shipmentStatus).toBe('failed_delivery'); // untouched
     } finally {
-      record.shipmentStatus = original;
+      await setBusinessPlusOrderShipmentStatusForTest('BP-ORD-7002', 'failed_delivery');
     }
   });
 

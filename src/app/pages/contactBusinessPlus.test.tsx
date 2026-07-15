@@ -5,7 +5,7 @@ import { RouterProvider, createMemoryRouter } from 'react-router';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { IdentityProvider } from '../contexts/IdentityContext';
 import { routes } from '../routes';
-import { businessPlusProviderState } from '../data/businessPlusOrders';
+import { setBusinessPlusProviderDown } from '../services/orderProvider';
 
 function renderApp(path: string, identityId = 'customer') {
   window.localStorage.setItem('heyq-identity', identityId);
@@ -19,8 +19,8 @@ function renderApp(path: string, identityId = 'customer') {
   );
 }
 
-afterEach(() => {
-  businessPlusProviderState.available = true;
+afterEach(async () => {
+  await setBusinessPlusProviderDown(false);
 });
 
 describe('Business+ order selection on the contact form (M22)', () => {
@@ -71,7 +71,7 @@ describe('Business+ order selection on the contact form (M22)', () => {
   });
 
   it('degrades to the no-order path when the provider is down', async () => {
-    businessPlusProviderState.available = false;
+    await setBusinessPlusProviderDown(true);
     const user = userEvent.setup();
     renderApp('/contact');
 

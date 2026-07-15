@@ -1,7 +1,12 @@
-// Mock GGX Business+ data (M22). This file stands in for what Business+ will
-// later serve over its API: organizations, their users, and the orders each
-// organization is authorized to see. Reached ONLY through the order-provider
-// boundary (services/orderProvider.ts) — components never import this directly.
+// Mock GGX Business+ data (M22). As of M23/M24, HeyQ's mock API server
+// (server/seed.ts) is the RUNTIME source of truth for this data — the server
+// enforces order authorization, not the browser. This file is kept only as:
+//   (a) the shared `BusinessPlusOrg`/`BusinessPlusUser`/`BusinessPlusOrderRecord`
+//       type source (imported by services/orderProvider.ts's client types), and
+//   (b) a read-only fixture for orderProvider.test.ts's expected-count checks.
+// `businessPlusProviderState` has no runtime effect any more — the outage
+// simulation is server-side (server/store.ts's isDown/setDown, toggled via
+// services/orderProvider.ts's setBusinessPlusProviderDown test helper).
 //
 // External IDs (bp-org-*, bp-user-*, BP-ORD-*) are stable Business+ identifiers.
 // They are stored on tickets as reference data and are never HeyQ primary keys.

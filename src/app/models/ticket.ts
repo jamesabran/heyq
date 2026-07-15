@@ -92,11 +92,45 @@ export interface Requester {
   brandId: string;
 }
 
+// ── Provenance & customer visibility (M23) ───────────────────────────────────
+// Who opened a ticket, through which channel, and whether the customer may see
+// it. These are what the server's visibility policy is enforced on — a ticket is
+// NEVER exposed to a customer merely because it references their order or
+// account (docs/business-plus-integration.md).
+
+/** Who actually opened the ticket. */
+export type TicketCreatorType = 'requester' | 'agent' | 'system';
+
+/** The channel it arrived through. */
+export type TicketSourceChannel =
+  | 'business_plus' // submitted by a signed-in Business+ requester
+  | 'heyq_web'      // HeyQ's own contact form
+  | 'email'
+  | 'internal'      // staff-raised, internal-only by default
+  | 'proactive';    // support opened it FOR a customer
+
 export interface Ticket {
   id: string;
   reference: string;
   brandId: string;
   requesterId: string;
+
+  // ── Provenance + visibility ────────────────────────────────────────────────
+  /** Who opened it. Agent/system tickets are never customer-visible by default. */
+  creatorType: TicketCreatorType;
+  sourceChannel: TicketSourceChannel;
+  /**
+   * The external (Business+) identity this ticket belongs to. Absent on tickets
+   * with no Business+ requester — which therefore can never be customer-visible.
+   */
+  requesterExternalUserId?: string;
+  requesterExternalOrgId?: string;
+  /** Master switch: may this ticket be shown in the customer's app at all? */
+  customerVisible: boolean;
+  /** When true, anyone in the account may see it — not just the submitting user. */
+  accountVisible?: boolean;
+  /** Whether the customer has been told this ticket exists. */
+  customerNotified?: boolean;
   subject: string;
   description: string;
   categoryId: string;
@@ -318,14 +352,32 @@ export const SOURCE_SYSTEM_LABELS: Record<ExternalSourceSystem, string> = {
   ggx_business_plus: 'GGX Business+',
 };
 
-/** Minimal order context captured at submission — enough to triage, nothing more. */
+/**
+ * Minimal order context captured at submission — enough to triage, nothing more.
+ *
+ * Two upstream paths fill this, and each sends only what it is willing to share:
+ *   • HeyQ's own order picker (mock provider) — sender/recipient summaries.
+ *   • GGX Business+ — deliberately WITHHOLDS recipient, payment, COD, fees and
+ *     parcel contents, and sends service type, a short delivery summary and a
+ *     city-level route instead (its data-minimization contract).
+ *
+ * Everything past `bookingDate` is therefore optional: HeyQ renders exactly what
+ * it was given and never invents the rest.
+ */
 export interface LinkedOrderSnapshot {
+  /** Delivery/shipment status AT CAPTURE TIME. Independent of ticket status. */
   shipmentStatus: ShipmentStatus;
   bookingDate: string;
-  /** Limited summaries, not full contact records (mirrors the masking rule #15). */
-  senderSummary: string;
-  recipientSummary: string;
   destination?: string;
+  /** Limited summaries, not full contact records (mirrors the masking rule #15). */
+  senderSummary?: string;
+  recipientSummary?: string;
+  /** Business+ path: Standard / Same-Day / On-Demand. */
+  serviceType?: string;
+  /** Business+ path: short, non-identifying summary (e.g. "Express delivery"). */
+  deliverySummary?: string;
+  /** Business+ path: city-level route only (e.g. "Makati City → Pasig City"). */
+  route?: string;
 }
 
 export interface LinkedOrder {
@@ -335,6 +387,49 @@ export interface LinkedOrder {
   snapshot: LinkedOrderSnapshot;
   /** When the snapshot was captured — shown so agents know how old it is. */
   capturedAt: string;
+}
+
+// ── Customer projection (M23) ────────────────────────────────────────────────
+// What the server returns to a CUSTOMER client (GGX Business+). This type IS the
+// privacy boundary: it has no field for internal notes, assignee identity,
+// escalation state, support tier, SLA, or team queue, so none of them can be
+// serialized into a customer response by accident. The handling TEAM is
+// customer-safe and is what replaces the agent's name.
+
+export interface CustomerTicketMessage {
+  id: string;
+  /** Never an individual agent identity. */
+  from: 'you' | 'support' | 'system';
+  /** Team name for support replies (e.g. "Claims"), or "You"/"HeyQ". */
+  authorLabel: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface CustomerTicket {
+  id: string;
+  reference: string;
+  subject: string;
+  concernType?: ConcernType;
+  /** Human label for the concern. */
+  issueType: string;
+  /** SUPPORT-TICKET status — distinct from the order's delivery status. */
+  status: TicketStatus;
+  priority: TicketPriority;
+  /** Handling team, never the agent. */
+  supportTeam: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  reopenedAt?: string;
+  /**
+   * True when SUPPORT opened this ticket, not the customer (proactive outreach).
+   * The customer app must label it as such and never present it as self-submitted.
+   */
+  openedBySupport: boolean;
+  linkedOrder?: LinkedOrder;
+  messages: CustomerTicketMessage[];
+  canReopen: boolean;
 }
 
 export interface MockAttachment {

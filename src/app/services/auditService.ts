@@ -1,29 +1,20 @@
 /**
- * auditService — the org-wide activity trail (M20).
- *
- * Another AGGREGATOR: it unifies the histories the app already records — status
- * events, assignments, escalations, internal notes, and KB revisions — into one
- * chronological stream. No new data model; nothing here is written by this
- * service, only read.
+ * auditService — the org-wide activity trail (M20), now split across two
+ * sources: ticket-derived entries (status/assignment/escalation/note history)
+ * come from the HeyQ mock API server (server/audit.ts), since HeyQ owns ticket
+ * state; KB entries stay local — KB isn't ticket state and wasn't moved.
  *
  * It records **what was done, by whom, and when** — never the content of an
- * internal note (product rule #5 keeps note bodies on the ticket, where the
- * access rules around them already live). The audit viewer is gated to team
- * leads and admins (`AUDIT_ROLES`).
+ * internal note (product rule #5). Gated to team leads and admins (`AUDIT_ROLES`).
  *
- * Future API endpoint:
- *   GET /audit?category=&actor=&q=   → listAuditEntries
+ * Endpoints:
+ *   GET /audit/tickets         → server-side ticket/assignment/escalation/note entries
+ *   GET /audit/tickets/actors  → server-side ticket-derived actors
  */
-import { assignments, escalations, internalNotes, statusEvents, tickets } from '../data/tickets';
 import { kbArticles, kbRevisions } from '../data/kb';
-import { agents, teams } from '../data/catalog';
+import { agents } from '../data/catalog';
 import { ROLE_LABELS, type Role } from '../lib/roles';
-import {
-  ESCALATION_REASON_LABELS,
-  STATUS_LABELS,
-  type EscalationReason,
-} from '../models/ticket';
-import { clone, simulateLatency } from '../lib/mock';
+import { apiGet } from '../lib/apiClient';
 
 export type AuditCategory = 'ticket' | 'assignment' | 'escalation' | 'note' | 'kb';
 
@@ -43,10 +34,8 @@ export interface AuditEntry {
   category: AuditCategory;
   /** What happened — the action, not the payload. */
   action: string;
-  /** The ticket this entry belongs to, if any. */
   ticketId?: string;
   ticketRef?: string;
-  /** The KB article this entry belongs to, if any. */
   articleId?: string;
   articleTitle?: string;
 }
@@ -63,93 +52,13 @@ export interface AuditActor {
   name: string;
 }
 
-const ticketRef = (id: string) => tickets.find((t) => t.id === id)?.reference;
-const teamName = (id?: string) => teams.find((t) => t.id === id)?.name ?? id;
-
-/**
- * Resolve an actor id to a display name. Most actors are support agents, but the
- * trail also carries the two non-human actors the seed uses (system, requester)
- * and the KB editor — who edits articles but is not an agent, so she is not in
- * the agent roster. Fall back to the role label rather than leaking a raw id.
- */
+/** Same actor-name fallback as the server's copy, for the KB entries computed here. */
 function actorName(id: string): string {
   if (id === 'system') return 'System';
   if (id === 'requester') return 'Requester';
   const agent = agents.find((a) => a.id === id);
   if (agent) return agent.name;
   return id in ROLE_LABELS ? ROLE_LABELS[id as Role] : id;
-}
-
-function statusEntries(): AuditEntry[] {
-  return statusEvents.map((e) => ({
-    id: e.id,
-    timestamp: e.timestamp,
-    actorId: e.actor,
-    actorName: actorName(e.actor),
-    category: 'ticket' as const,
-    action: e.fromStatus
-      ? `Status changed ${STATUS_LABELS[e.fromStatus]} → ${STATUS_LABELS[e.toStatus]}`
-      : `Ticket created (${STATUS_LABELS[e.toStatus]})`,
-    ticketId: e.ticketId,
-    ticketRef: ticketRef(e.ticketId),
-  }));
-}
-
-function assignmentEntries(): AuditEntry[] {
-  return assignments.map((a) => {
-    // A re-route (team change with no new assignee) is recorded as an assignment
-    // too — say so, rather than reporting a misleading "Unassigned".
-    const rerouted = a.fromTeamId && a.toTeamId && a.fromTeamId !== a.toTeamId;
-    const action = a.toAssigneeId
-      ? `Assigned to ${actorName(a.toAssigneeId)}`
-      : rerouted
-        ? `Routed ${teamName(a.fromTeamId)} → ${teamName(a.toTeamId)}`
-        : 'Unassigned';
-
-    return {
-      id: a.id,
-      timestamp: a.timestamp,
-      actorId: a.actor,
-      actorName: actorName(a.actor),
-      category: 'assignment' as const,
-      action,
-      ticketId: a.ticketId,
-      ticketRef: ticketRef(a.ticketId),
-    };
-  });
-}
-
-function escalationEntries(): AuditEntry[] {
-  return escalations.map((e) => ({
-    id: e.id,
-    timestamp: e.timestamp,
-    actorId: e.actor,
-    actorName: actorName(e.actor),
-    category: 'escalation' as const,
-    action:
-      e.direction === 'escalate'
-        ? `Escalated ${e.fromTier} → ${e.toTier}${
-            e.reason ? ` (${ESCALATION_REASON_LABELS[e.reason as EscalationReason] ?? e.reason})` : ''
-          }`
-        : `Returned to ${e.toTier}`,
-    ticketId: e.ticketId,
-    ticketRef: ticketRef(e.ticketId),
-  }));
-}
-
-function noteEntries(): AuditEntry[] {
-  // The note body is deliberately absent — the audit trail records that a note
-  // was added, not what it said (product rule #5).
-  return internalNotes.map((n) => ({
-    id: n.id,
-    timestamp: n.createdAt,
-    actorId: n.agentId,
-    actorName: n.agentName,
-    category: 'note' as const,
-    action: 'Internal note added',
-    ticketId: n.ticketId,
-    ticketRef: ticketRef(n.ticketId),
-  }));
 }
 
 function kbEntries(): AuditEntry[] {
@@ -167,41 +76,27 @@ function kbEntries(): AuditEntry[] {
 
 /** The whole trail, newest first, filtered. */
 export async function listAuditEntries(params: ListAuditParams = {}): Promise<AuditEntry[]> {
-  await simulateLatency();
   const { category, actorId, search } = params;
 
-  let entries = [
-    ...statusEntries(),
-    ...assignmentEntries(),
-    ...escalationEntries(),
-    ...noteEntries(),
-    ...kbEntries(),
-  ];
+  const [ticketEntries] = await Promise.all([apiGet<AuditEntry[]>('/audit/tickets')]);
+  let entries: AuditEntry[] = [...ticketEntries, ...kbEntries()];
 
   if (category) entries = entries.filter((e) => e.category === category);
   if (actorId) entries = entries.filter((e) => e.actorId === actorId);
   if (search?.trim()) {
     const q = search.trim().toLowerCase();
     entries = entries.filter((e) =>
-      `${e.ticketRef ?? ''} ${e.articleTitle ?? ''} ${e.actorName} ${e.action}`
-        .toLowerCase()
-        .includes(q),
+      `${e.ticketRef ?? ''} ${e.articleTitle ?? ''} ${e.actorName} ${e.action}`.toLowerCase().includes(q),
     );
   }
 
-  return clone(entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp)));
+  return entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
 /** Everyone who appears in the trail — drives the actor filter. */
 export async function listAuditActors(): Promise<AuditActor[]> {
-  await simulateLatency();
-  const entries = [
-    ...statusEntries(),
-    ...assignmentEntries(),
-    ...escalationEntries(),
-    ...noteEntries(),
-    ...kbEntries(),
-  ];
+  const ticketEntries = await apiGet<AuditEntry[]>('/audit/tickets');
+  const entries = [...ticketEntries, ...kbEntries()];
 
   const seen = new Map<string, string>();
   for (const e of entries) seen.set(e.actorId, e.actorName);

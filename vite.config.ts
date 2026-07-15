@@ -13,5 +13,9 @@ export default defineConfig({
   server: {
     port: 18020,
     strictPort: true,
+    proxy: {
+      // The HeyQ mock API server (M23/M24) — run separately via `npm run server`.
+      '/api': `http://localhost:${Number(process.env.HEYQ_API_PORT) || 4310}`,
+    },
   },
 });

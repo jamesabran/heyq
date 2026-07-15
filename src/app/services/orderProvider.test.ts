@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getOrderProvider, type OrderProviderIdentity } from './orderProvider';
-import { businessPlusOrders, businessPlusProviderState } from '../data/businessPlusOrders';
+import { getOrderProvider, setBusinessPlusProviderDown, type OrderProviderIdentity } from './orderProvider';
+import { businessPlusOrders } from '../data/businessPlusOrders';
 
 const nadia: OrderProviderIdentity = { externalUserId: 'bp-user-nadia', externalOrgId: 'bp-org-acme' };
 const omar: OrderProviderIdentity = { externalUserId: 'bp-user-omar', externalOrgId: 'bp-org-zenith' };
@@ -12,8 +12,8 @@ const countFor = (orgId: string) =>
 
 const provider = getOrderProvider();
 
-afterEach(() => {
-  businessPlusProviderState.available = true;
+afterEach(async () => {
+  await setBusinessPlusProviderDown(false);
 });
 
 describe('orderProvider — authorization (M22)', () => {
@@ -71,7 +71,7 @@ describe('orderProvider — authorization (M22)', () => {
 
 describe('orderProvider — availability (M22)', () => {
   it('reports unavailable on every read while the provider is down', async () => {
-    businessPlusProviderState.available = false;
+    await setBusinessPlusProviderDown(true);
 
     expect((await provider.listAuthorizedOrders(nadia)).status).toBe('unavailable');
     expect((await provider.getAuthorizedOrder(nadia, 'BP-ORD-7001')).status).toBe('unavailable');

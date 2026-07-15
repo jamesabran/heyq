@@ -96,7 +96,7 @@ export function RequesterPortal() {
               <span><ShipmentStatusBadge status={ticket.linkedOrder.snapshot.shipmentStatus} /></span>
             </div>
             <Detail label="Booked" value={formatDate(ticket.linkedOrder.snapshot.bookingDate)} />
-            <Detail label="Recipient" value={ticket.linkedOrder.snapshot.recipientSummary} />
+            <Detail label="Recipient" value={ticket.linkedOrder.snapshot.recipientSummary ?? '—'} />
           </CardContent>
         </Card>
       )}

@@ -23,8 +23,10 @@ describe('audit log (M20)', () => {
     renderApp('/admin/audit', 'admin');
 
     expect(await screen.findByRole('heading', { name: 'Audit Log' })).toBeInTheDocument();
-    // The escalation of tkt-seed-7 is in the trail, attributed to the lead who did it.
-    expect(await screen.findByText(/escalated l1 → l2/i)).toBeInTheDocument();
+    // The escalation of tkt-seed-7 is in the trail, attributed to the lead who
+    // did it (tkt-bp-1's escalation is also L1 → L2, so this can match more
+    // than one row — the point is the trail contains it at all).
+    expect((await screen.findAllByText(/escalated l1 → l2/i)).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: 'HQ-2026-0007' }).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Carlo Reyes').length).toBeGreaterThan(0);
   });
@@ -47,8 +49,9 @@ describe('audit log (M20)', () => {
   it('records that an internal note was added, never what it said', async () => {
     renderApp('/admin/audit?category=note', 'admin');
 
-    // Both seeded notes appear — as actions, with no bodies.
-    expect(await screen.findAllByText('Internal note added')).toHaveLength(2);
+    // All four seeded notes appear — as actions, with no bodies (M23 added two
+    // more: tkt-bp-1's and tkt-internal-1's).
+    expect(await screen.findAllByText('Internal note added')).toHaveLength(4);
     // The seeded note body must not surface in the audit trail (product rule #5).
     expect(screen.queryByText(/likely the crash from the 3\.2\.1 release/i)).not.toBeInTheDocument();
   });

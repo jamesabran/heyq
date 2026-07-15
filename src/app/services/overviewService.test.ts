@@ -10,9 +10,10 @@ describe('overviewService — role scoping (M19)', () => {
     if (data.kind !== 'tickets') throw new Error('expected a ticket overview');
 
     // Open and assigned to l1_agent: tkt-seed-4 (high), tkt-seed-5 (urgent),
-    // tkt-seed-8 (on hold), tkt-seed-17 (reopened). tkt-seed-15 resolved today;
+    // tkt-seed-8 (on hold), tkt-seed-17 (reopened), tkt-bp-2 (M22, on hold),
+    // tkt-proactive-1 (M23, in progress). tkt-seed-15 resolved today;
     // tkt-seed-16 is closed, so it counts toward neither.
-    expect(counter(data, 'assigned')?.value).toBe(4);
+    expect(counter(data, 'assigned')?.value).toBe(6);
     expect(counter(data, 'urgent')?.value).toBe(1);
     expect(counter(data, 'reopened')?.value).toBe(1);
     expect(counter(data, 'resolved_today')?.value).toBe(1);

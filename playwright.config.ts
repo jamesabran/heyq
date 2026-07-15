@@ -24,10 +24,20 @@ export default defineConfig({
     { name: 'tablet', use: { ...devices['Desktop Chrome'], viewport: { width: 768, height: 1024 } } },
     { name: 'mobile', use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 } } },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:18020',
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // The HeyQ mock API server (M23/M24) — the app now has no ticket state
+      // of its own, so e2e needs real data behind the vite proxy.
+      command: 'npm run server',
+      url: 'http://localhost:4310/api/health',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: 'npm run dev',
+      url: 'http://localhost:18020',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
 });

@@ -45,7 +45,7 @@ describe('agent workspace', () => {
     renderApp('/app/mine');
     await screen.findByRole('heading', { name: 'My Queue' });
     // Column header + a seeded concern value (tkt-seed-4 → Booking issue).
-    expect(screen.getByRole('columnheader', { name: /concern type/i })).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: /concern type/i })).toBeInTheDocument();
     expect(screen.getAllByText('Booking issue').length).toBeGreaterThan(0);
   });
 
@@ -53,7 +53,7 @@ describe('agent workspace', () => {
     renderApp('/app/team');
     await screen.findByRole('heading', { name: 'Team Tickets' });
 
-    expect(screen.getByRole('columnheader', { name: /tracking/i })).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: /tracking/i })).toBeInTheDocument();
     // tkt-seed-3 links TXN-2003.
     expect(await screen.findByText('ZTQZ-F924-ZZ0P')).toBeInTheDocument();
   });
