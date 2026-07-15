@@ -31,7 +31,19 @@ frontend origin via CORS.
 | `PORT` | Auto | Injected by the host | Server listens on it; binds `0.0.0.0`. |
 | `HEYQ_API_PORT` | No | e.g. `4310` | Local fallback only, used when `PORT` is unset. |
 | `HOST` | No | default `0.0.0.0` | Override the bind address if needed. |
-| `HEYQ_FRONTEND_ORIGIN` | No | e.g. `https://heyq-preview.vercel.app` | Extra allowed CORS origin. `http://localhost:18020` and `https://heyq.vercel.app` are always allowed. |
+| `HEYQ_FRONTEND_ORIGIN` | No | e.g. `https://heyq-preview.vercel.app` | Extra **agent** CORS origin(s), comma-separated. `http://localhost:18020` and `https://heyq.vercel.app` are always allowed. Agent origins may reach every route. |
+| `HEYQ_BUSINESS_PLUS_ORIGIN` | No | e.g. `https://ggx-corporate.vercel.app` | Extra **customer** CORS origin(s), comma-separated. `http://localhost:18010` and `https://ggx-corporate.vercel.app` are always allowed. Customer origins may reach only the `public` customer surface (ticket reads + requester reply/reopen); agent/internal routes are refused with 403. |
+
+### Route protection (no auth at this mock stage)
+
+Each API route is `public` (the GGX Business+ customer surface) or `internal`
+(agent app, order picker, portal token exchange, notifications, reports, audit).
+A request to an `internal` route from a **known customer origin** is refused with
+`403`. This is an origin-based boundary, not authentication — it exists so the
+customer app cannot reach agent/internal endpoints. Server-to-server and test
+callers send no `Origin` and are unaffected; the agent frontend is not a customer
+origin. `public` routes: `GET /health`, `GET /customer/tickets`,
+`GET /customer/tickets/:id`, `POST /tickets/:id/messages`, `POST /tickets/:id/reopen`.
 
 ## Vercel (frontend) settings
 

@@ -21,10 +21,22 @@ type Params = Record<string, string>;
 type Query = URLSearchParams;
 type Handler = (req: IncomingMessage, params: Params, query: Query, storeId: string) => Promise<unknown>;
 
+/**
+ * Who a route is for. `public` routes are the CUSTOMER surface (GGX Business+):
+ * ticket reads plus requester reply/reopen — the same requester actions HeyQ's
+ * own portal performs. Everything else is `internal`: the agent app, the contact
+ * form's order picker, the portal token exchange, notifications, reports, audit.
+ * The default is `internal`, so a new route is closed to customers until it is
+ * deliberately opened. Enforcement is in `handleRequest`.
+ */
+type RouteAccess = 'public' | 'internal';
+
 interface Route {
   method: string;
   pattern: string;
   handler: Handler;
+  /** Omitted ⇒ 'internal'. Only routes GGX Business+ must reach are 'public'. */
+  access?: RouteAccess;
 }
 
 function matchPattern(pattern: string, pathname: string): Params | null {
@@ -59,17 +71,35 @@ function readJsonBody(req: IncomingMessage): Promise<any> {
   });
 }
 
-// The frontend is served from a different origin than this API in production,
-// so browser calls are cross-origin and require CORS. Allowed origins: the
-// local Vite dev server (vite.config.ts), the deployed Vercel frontend, and an
-// optional host-configured origin (e.g. a preview or custom domain) via
-// HEYQ_FRONTEND_ORIGIN.
-const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:18020', 'https://heyq.vercel.app'];
+// This API is cross-origin to every browser app that calls it, so CORS is
+// required. Two KINDS of caller exist, and they may reach different routes:
+//
+//   • AGENT origins — HeyQ's own frontend (agent app + requester portal + the
+//     contact form). Reach every route. Defaults: the local Vite dev server and
+//     the deployed Vercel frontend; extend with HEYQ_FRONTEND_ORIGIN.
+//   • CUSTOMER origins — GGX Business+. Reach ONLY `public` routes; agent/
+//     internal routes are refused (see handleRequest). Defaults: Business+ local
+//     dev and its deployed Vercel origin; extend with HEYQ_BUSINESS_PLUS_ORIGIN.
+//
+// Both lists are environment-driven so a new deployment adds its real origin
+// without a code change. Each variable accepts a comma-separated list.
+const DEFAULT_AGENT_ORIGINS = ['http://localhost:18020', 'https://heyq.vercel.app'];
+const DEFAULT_CUSTOMER_ORIGINS = ['http://localhost:18010', 'https://ggx-corporate.vercel.app'];
 
-function allowedOrigins(): string[] {
-  const configured = process.env.HEYQ_FRONTEND_ORIGIN?.replace(/\/+$/, '');
-  return configured ? [...DEFAULT_ALLOWED_ORIGINS, configured] : DEFAULT_ALLOWED_ORIGINS;
+function envOrigins(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
 }
+
+const agentOrigins = (): string[] => [...DEFAULT_AGENT_ORIGINS, ...envOrigins(process.env.HEYQ_FRONTEND_ORIGIN)];
+const customerOrigins = (): string[] => [...DEFAULT_CUSTOMER_ORIGINS, ...envOrigins(process.env.HEYQ_BUSINESS_PLUS_ORIGIN)];
+const allowedOrigins = (): string[] => [...agentOrigins(), ...customerOrigins()];
+
+/** A customer origin may only reach `public` routes. */
+const isCustomerOrigin = (origin: string | undefined): boolean =>
+  !!origin && customerOrigins().includes(origin);
 
 function applyCors(req: IncomingMessage, res: ServerResponse): void {
   const origin = req.headers.origin;
@@ -92,7 +122,7 @@ function statusForError(err: unknown): number {
 const bool = (v: string | null) => v === '1' || v === 'true';
 
 const routes: Route[] = [
-  { method: 'GET', pattern: '/health', handler: async () => ({ ok: true }) },
+  { method: 'GET', pattern: '/health', handler: async () => ({ ok: true }), access: 'public' },
 
   // ── Test-only infrastructure controls (used by orderProvider.test.ts and
   // businessPlusFlow.test.ts to simulate an outage / an upstream live update —
@@ -158,12 +188,16 @@ const routes: Route[] = [
     handler: async (_req, p, _q, storeId) => tickets.listMessages(storeId, p.id),
   },
   {
+    // Requester reply — the same action HeyQ's portal performs. Customer-facing.
     method: 'POST', pattern: '/tickets/:id/messages',
     handler: async (req, p, _q, storeId) => tickets.addRequesterMessage(storeId, p.id, (await readJsonBody(req)).body),
+    access: 'public',
   },
   {
+    // Requester reopen — customer-facing, like the portal's reopen.
     method: 'POST', pattern: '/tickets/:id/reopen',
     handler: async (_req, p, _q, storeId) => tickets.reopenTicket(storeId, p.id),
+    access: 'public',
   },
   {
     method: 'POST', pattern: '/tickets/:id/hold',
@@ -338,6 +372,8 @@ const routes: Route[] = [
   },
 
   // ── Customer (Business+) visibility surface ─────────────────────────────
+  // The customer read surface. Server-side visibility policy (server/visibility.ts)
+  // decides what a requester may see; these are the only reads Business+ makes.
   {
     method: 'GET', pattern: '/customer/tickets',
     handler: async (_req, _p, q, storeId) =>
@@ -345,6 +381,7 @@ const routes: Route[] = [
         externalUserId: q.get('externalUserId') ?? '',
         externalOrgId: q.get('externalOrgId') ?? '',
       }),
+    access: 'public',
   },
   {
     method: 'GET', pattern: '/customer/tickets/:id',
@@ -357,6 +394,7 @@ const routes: Route[] = [
       if (!t) throw new Error('Ticket not found');
       return t;
     },
+    access: 'public',
   },
 ];
 
@@ -377,6 +415,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     if (route.method !== req.method) continue;
     const params = matchPattern(route.pattern, pathname);
     if (!params) continue;
+
+    // Route protection: the customer app (GGX Business+) may reach only `public`
+    // routes. An agent/internal route requested from a known customer origin is
+    // refused here — the boundary that keeps agent surfaces off the customer app
+    // at this no-auth mock stage. (Server-to-server and test calls carry no
+    // Origin and are unaffected; the agent frontend is not a customer origin.)
+    if (route.access !== 'public' && isCustomerOrigin(req.headers.origin)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'This endpoint is not available to customer applications.' }));
+      return;
+    }
 
     try {
       const result = await route.handler(req, params, url.searchParams, storeId);

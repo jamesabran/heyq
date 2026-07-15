@@ -20,3 +20,6 @@ coverage
 e2e/screenshots/
 test-results/
 playwright-report/
+
+.vercel
+.env*
