@@ -3,11 +3,50 @@
 Living status of the HeyQ project. Update this at the end of each working
 session so the next one can resume without re-deriving context.
 
-_Last updated: 2026-07-14_
+_Last updated: 2026-07-15_
 
 ## Current phase
 
-_Last session: Milestones 19 (role-based Overview dashboard), 20 (audit log
+_Last session: Milestones 23/24 — HeyQ's own standalone mock API server now
+owns all ticket, notification, and Business+-order-provider state. Built in
+full._ See [`decision-log.md`](decision-log.md) (D48–D54) for the decisions and
+rationale. Summary:
+
+- **`server/`** (new, plain TypeScript, run with `npm run server` via `tsx`):
+  `seed.ts`/`store.ts` (per-`storeId` in-memory stores, `X-Store-Id` header,
+  generic `isDown`/`setDown`), `tickets.ts` (the full ~800-line lifecycle port:
+  create/assign/escalate/reply/resolve/reopen/hold/reclassify/link-transaction),
+  `notifications.ts`, `orderProvider.ts` (Business+ mock, authorization enforced
+  server-side), `requester.ts`, `reports.ts`, `audit.ts` (ticket-derived half),
+  `customer.ts` + `visibility.ts` (the M23 customer-projection policy, now
+  reachable over HTTP — not yet consumed by GGX Corporate, but ready for that
+  future swap), and `http.ts`/`index.ts` (a hand-rolled `node:http` router, no
+  framework).
+- **Every client service kept its exact pre-M23 exported signatures** —
+  `ticketService`, `requesterService`, `reportsService`, `auditService` (ticket
+  half; KB stays local), `notificationService`, `orderProvider` all became thin
+  `fetch` wrappers over `src/app/lib/apiClient.ts`. UI components and almost
+  every existing test needed zero changes.
+- **Test architecture:** `src/test/setup.ts` now starts a fresh HeyQ server
+  *inside each test file's own isolated module registry* (not `globalSetup`) —
+  required so `adminService.ts` mutating `data/catalog.ts` (routing, SLA
+  targets, agent state) stays visible to that file's own server instance (D52).
+- **Dev tooling:** `npm run server` (`tsx`) + `npm run dev` (vite, now proxying
+  `/api` to the server) as two terminals; `playwright.config.ts` boots both via
+  a `webServer` array.
+- **`data/tickets.ts` and `data/businessPlusOrders.ts` were kept** (not
+  deleted) as documented read-only test fixtures; `data/notifications.ts` had
+  zero remaining consumers and was deleted.
+- **Gates green:** typecheck ✓, lint ✓ (pre-existing fast-refresh warnings
+  only), tests **169/169** ✓, e2e **51/51** ✓, build ✓. Manually smoke-tested
+  in a real browser against both real servers: submit → unassigned queue →
+  claim → reply → resolve → SLA "Met" → notifications fired, all over real
+  HTTP.
+- **Out of scope (unchanged):** GGX Corporate's own mock HeyQ adapter
+  (`services/heyqService.ts`, a separate repo) was not wired to this server —
+  that is a later, separate integration step.
+
+_Previous session: Milestones 19 (role-based Overview dashboard), 20 (audit log
 viewer), 21 (ticket-field & state-presentation rework), and 22 (GGX Business+
 integration, HeyQ side) built._
 
@@ -397,14 +436,23 @@ Walk these in **both light and dark**, at **1440px, 768px, and 375px**:
 
 ## Next up
 
-**Every frontend milestone is built** (MVP M1–M12; Phase 2 M13–M16, M19–M22).
+**Every frontend milestone is built** (MVP M1–M12; Phase 2 M13–M16, M19–M22),
+**and HeyQ now owns its ticket/notification/order-provider state server-side**
+(M23/M24 — see "Current phase" above and `decision-log.md` D48–D54).
 
 Remaining work is **outside this repository or gated**:
 
+- **Wiring GGX Corporate's mock HeyQ adapter to the real server.** GGX
+  Corporate (a separate repo) currently talks to its own local mock of HeyQ
+  (`services/heyqService.ts` / `data/heyqTickets.ts`); swapping that to call
+  this repo's `npm run server` over HTTP (`server/customer.ts`'s
+  `/api/customer/tickets*` endpoints, built on the M23 visibility policy) is a
+  later integration step, deliberately not done in this session.
 - **Business+ side of M22** — implement the provider contract in
   [`business-plus-integration.md`](business-plus-integration.md): authenticated
   user/org identity, authorized order list/lookup, and the handoff into
-  `/contact?order=…`. HeyQ's `OrderProvider` seam is the drop-in point.
+  `/contact?order=…`. HeyQ's `OrderProvider` seam is the drop-in point (now
+  server-side — `server/orderProvider.ts`).
 - **M17** — backend transaction lookup & sync planning: ✅ **plan written**
   ([`transaction-integration-plan.md`](transaction-integration-plan.md)).
 - **M18** — production GGX transaction/payment/remittance integration: ⏳ blocked.
