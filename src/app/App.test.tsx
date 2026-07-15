@@ -22,7 +22,7 @@ describe('application shell', () => {
   it('renders the brand mark, disabled brand control, and identity switcher', () => {
     renderApp('/app', 'admin');
     const header = screen.getByRole('banner');
-    expect(within(header).getByText('HeyQ')).toBeInTheDocument();
+    expect(within(header).getByText('QuadX Helpdesk')).toBeInTheDocument();
 
     const brandControl = screen.getByRole('button', { name: /ggx/i });
     expect(brandControl).toBeDisabled();

@@ -1,5 +1,6 @@
 import { IconMenu2 } from '@tabler/icons-react';
 import { Link } from 'react-router';
+import { PRODUCT_NAME } from '../../config/brand';
 import { Button } from '../ui/Button';
 import { ThemeToggle } from '../ThemeToggle';
 import { IdentitySwitcher } from '../IdentitySwitcher';
@@ -38,7 +39,12 @@ export function Header({ onToggleSidebar, sidebarOpen }: HeaderProps) {
         >
           Q
         </span>
-        <span className="text-lg font-semibold text-foreground">HeyQ</span>
+        {/* The wordmark is longer than the old one; below `sm` it folds away and the
+            Q mark carries the brand, matching the BrandControl's own `sm` gate so the
+            phone header never grows past the viewport. */}
+        <span className="hidden whitespace-nowrap text-lg font-semibold text-foreground sm:inline">
+          {PRODUCT_NAME}
+        </span>
       </Link>
 
       <BrandControl className="ml-1 hidden sm:inline-flex" />

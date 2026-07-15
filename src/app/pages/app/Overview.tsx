@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link } from 'react-router';
 import { IconCircleCheck, IconClockExclamation, IconPlus } from '@tabler/icons-react';
 import {
@@ -11,6 +11,11 @@ import {
 } from '../../services/overviewService';
 import type { RequesterTicketSummary } from '../../services/requesterService';
 import { useQuery } from '../../hooks/useQuery';
+import {
+  useStaleTransactionRefresh,
+  type RefreshedTransaction,
+  type StaleRefreshTarget,
+} from '../../hooks/useStaleTransactionRefresh';
 import { useIdentity, type Identity } from '../../contexts/IdentityContext';
 import { AGENT_ROLES } from '../../lib/roles';
 import { cn, formatDate } from '../../lib/utils';
@@ -58,7 +63,7 @@ export function Overview() {
         )}
       </div>
 
-      {data.kind === 'tickets' && <TicketOverviewBody data={data} />}
+      {data.kind === 'tickets' && <TicketOverviewBody data={data} viewerTeamId={teamId} />}
       {data.kind === 'kb' && <KbOverviewBody data={data} />}
       {data.kind === 'requester' && <RequesterOverviewBody data={data} />}
     </div>
@@ -86,10 +91,30 @@ function subtitleFor(identity: Identity): string {
 
 // ── Agent / supervisor / admin ───────────────────────────────────────────────
 
-function TicketOverviewBody({ data }: { data: TicketOverview }) {
+function TicketOverviewBody({ data, viewerTeamId }: { data: TicketOverview; viewerTeamId?: string }) {
   // Three distinct "nothing to show" states, and they mean different things:
   // no tickets at all, vs. tickets exist but none need attention right now.
   const nothingNeedsAttention = data.lists.every((l) => l.rows.length === 0);
+
+  // Auto-refresh the stale transaction snapshots on the visible rows in the
+  // background (deduped by external order), instead of asking the agent to open
+  // each ticket. The saved snapshot keeps showing until a refresh resolves.
+  const staleTargets = useMemo<StaleRefreshTarget[]>(() => {
+    const seen = new Set<string>();
+    const targets: StaleRefreshTarget[] = [];
+    for (const list of data.lists) {
+      for (const row of list.rows) {
+        const txnId = row.item.ticket.relatedTransactionId;
+        if (row.transaction?.stale && txnId && !seen.has(txnId)) {
+          seen.add(txnId);
+          targets.push({ id: txnId, viewerTeamId });
+        }
+      }
+    }
+    return targets;
+  }, [data.lists, viewerTeamId]);
+
+  const { refreshed, failedCount } = useStaleTransactionRefresh(staleTargets);
 
   if (!data.hasWork) {
     return (
@@ -108,10 +133,15 @@ function TicketOverviewBody({ data }: { data: TicketOverview }) {
 
   return (
     <>
-      {data.hasStaleData && (
-        <Alert variant="warning" icon={<IconClockExclamation size={18} />} title="Some transaction data is stale">
-          One or more rows show GGX transaction details that are past their freshness window. Open the
-          ticket and refresh the transaction panel for current shipment and payment status.
+      {failedCount > 0 && (
+        <Alert
+          variant="warning"
+          icon={<IconClockExclamation size={18} />}
+          title="Couldn't refresh some transaction data"
+        >
+          {failedCount === 1 ? 'One ticket' : `${failedCount} tickets`} couldn&apos;t be refreshed from
+          GGX just now — the latest saved shipment and payment details are still shown. Open the ticket
+          to retry.
         </Alert>
       )}
 
@@ -123,7 +153,7 @@ function TicketOverviewBody({ data }: { data: TicketOverview }) {
           right now.
         </Alert>
       ) : (
-        data.lists.map((list) => <AttentionSection key={list.key} list={list} />)
+        data.lists.map((list) => <AttentionSection key={list.key} list={list} refreshed={refreshed} />)
       )}
 
       {data.trend && (
@@ -167,19 +197,29 @@ function CounterGrid({ counters }: { counters: OverviewCounter[] }) {
 }
 
 /** An attention list. An empty one is dropped — the "all clear" state covers it. */
-function AttentionSection({ list }: { list: AttentionList }) {
+function AttentionSection({
+  list,
+  refreshed,
+}: {
+  list: AttentionList;
+  refreshed: Record<string, RefreshedTransaction>;
+}) {
   if (list.rows.length === 0) return null;
 
   // The shared TicketTable renders the rows; the Overview simply hands it the GGX
-  // transaction context the queues don't carry.
+  // transaction context the queues don't carry. Where a background refresh has
+  // landed, the fresh shipment/payment replaces the saved snapshot and the stale
+  // marker clears; otherwise the saved snapshot keeps showing.
   const items = list.rows.map((r) => r.item);
   const context: Record<string, RowTransactionContext> = {};
   for (const row of list.rows) {
     if (row.transaction) {
+      const txnId = row.item.ticket.relatedTransactionId;
+      const fresh = txnId ? refreshed[txnId] : undefined;
       context[row.item.ticket.id] = {
-        shipmentStatus: row.transaction.shipmentStatus,
-        paymentStatus: row.transaction.paymentStatus,
-        stale: row.transaction.stale,
+        shipmentStatus: fresh?.shipmentStatus ?? row.transaction.shipmentStatus,
+        paymentStatus: fresh?.paymentStatus ?? row.transaction.paymentStatus,
+        stale: fresh ? false : row.transaction.stale,
       };
     }
   }

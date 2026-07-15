@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { IconRefresh } from '@tabler/icons-react';
 import {
   getTransactionForTicket,
@@ -8,6 +8,11 @@ import {
 import { linkTransaction } from '../../services/ticketService';
 import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
+import {
+  useStaleTransactionRefresh,
+  type RefreshedTransaction,
+  type StaleRefreshTarget,
+} from '../../hooks/useStaleTransactionRefresh';
 import type { RelatedTransaction } from '../../models/ticket';
 import { formatDateTime } from '../../lib/utils';
 import { Alert } from '../ui/Alert';
@@ -48,6 +53,22 @@ export function TransactionPanel({
     [relatedTransactionId, viewerTeamId],
   );
 
+  // Once the saved snapshot loads and proves stale, refresh it in the background
+  // (deduped by external order) rather than making the agent hit Refresh. The
+  // snapshot stays on screen until the refresh resolves; on success the fresh
+  // shipment/payment replaces it, on failure a notice appears and the manual
+  // Refresh above stays available.
+  const found = result.data?.status === 'found' ? result.data : undefined;
+  const staleTargets = useMemo<StaleRefreshTarget[]>(
+    () =>
+      found?.stale && relatedTransactionId
+        ? [{ id: relatedTransactionId, viewerTeamId }]
+        : [],
+    [found?.stale, relatedTransactionId, viewerTeamId],
+  );
+  const { refreshed, failedCount } = useStaleTransactionRefresh(staleTargets);
+  const refreshedTxn = relatedTransactionId ? refreshed[relatedTransactionId] : undefined;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -81,7 +102,12 @@ export function TransactionPanel({
             This transaction belongs to another team. Ask the owning team or an admin to view its details.
           </Alert>
         ) : (
-          <TransactionDetails transaction={result.data.transaction} stale={result.data.stale} />
+          <TransactionDetails
+            transaction={result.data.transaction}
+            stale={result.data.stale}
+            refreshed={refreshedTxn}
+            refreshFailed={failedCount > 0}
+          />
         )}
       </CardContent>
     </Card>
@@ -94,19 +120,40 @@ function fmtMoney(amount: number | undefined, currency = 'PHP'): string {
   return `${symbol}${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function TransactionDetails({ transaction: t, stale }: { transaction: RelatedTransaction; stale: boolean }) {
+function TransactionDetails({
+  transaction: t,
+  stale,
+  refreshed,
+  refreshFailed,
+}: {
+  transaction: RelatedTransaction;
+  stale: boolean;
+  refreshed?: RefreshedTransaction;
+  refreshFailed?: boolean;
+}) {
   const hasCod = t.codAmount !== undefined || (t.remittanceStatus && t.remittanceStatus !== 'not_applicable');
+  // Prefer the background-refreshed shipment/payment once it lands; until then the
+  // saved snapshot shows. A successful refresh also clears the "Stale data" badge.
+  const shipmentStatus = refreshed?.shipmentStatus ?? t.shipmentStatus;
+  const paymentStatus = refreshed?.paymentStatus ?? t.paymentStatus;
+  const showStale = stale && !refreshed;
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-foreground">{t.trackingNumber}</span>
-        {stale && <Badge variant="warning">Stale data</Badge>}
+        {showStale && <Badge variant="warning">Stale data</Badge>}
       </div>
+
+      {refreshFailed && !refreshed && (
+        <Alert variant="warning">
+          Couldn&apos;t refresh from GGX — showing the latest saved data. Use Refresh above to retry.
+        </Alert>
+      )}
 
       {/* Three independent statuses. */}
       <div className="flex flex-col gap-2">
-        <StatusRow label="Shipment"><ShipmentStatusBadge status={t.shipmentStatus} /></StatusRow>
-        {t.paymentStatus && <StatusRow label="Payment"><PaymentStatusBadge status={t.paymentStatus} /></StatusRow>}
+        <StatusRow label="Shipment"><ShipmentStatusBadge status={shipmentStatus} /></StatusRow>
+        {paymentStatus && <StatusRow label="Payment"><PaymentStatusBadge status={paymentStatus} /></StatusRow>}
         {t.remittanceStatus && <StatusRow label="Remittance"><RemittanceStatusBadge status={t.remittanceStatus} /></StatusRow>}
       </div>
 

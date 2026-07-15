@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router';
 import { cn } from '../../lib/utils';
+import { PRODUCT_NAME } from '../../config/brand';
 import { visibleSections } from '../../config/navigation';
 import { useIdentity } from '../../contexts/IdentityContext';
 import { ROLE_LABELS } from '../../lib/roles';
@@ -21,12 +22,17 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       )}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:static lg:z-auto lg:translate-x-0',
+          // Mobile: an off-canvas drawer pinned to the full viewport (`inset-y-0`).
+          // Desktop (`lg`): sticky under the 3.5rem header and sized to the viewport
+          // (`h-[calc(100vh-3.5rem)]`), NOT to the main pane — so the rail always
+          // reaches the bottom even when content is short, and its nav scrolls on
+          // its own (`overflow-y-auto`) when it is taller than the viewport.
+          'fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:sticky lg:top-14 lg:z-auto lg:h-[calc(100vh-3.5rem)] lg:translate-x-0 lg:self-start',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         <div className="flex h-14 items-center px-4 lg:hidden">
-          <span className="text-lg font-semibold">HeyQ</span>
+          <span className="text-lg font-semibold">{PRODUCT_NAME}</span>
         </div>
 
         <nav id="primary-navigation" className="flex flex-col gap-5 p-3" aria-label="Primary">
