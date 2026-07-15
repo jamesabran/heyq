@@ -17,7 +17,7 @@ export default defineConfig({
   fullyParallel: true,
   reporter: process.env.CI ? 'line' : 'list',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:18020',
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
@@ -26,7 +26,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
+    url: 'http://localhost:18020',
     reuseExistingServer: true,
     timeout: 120_000,
   },
