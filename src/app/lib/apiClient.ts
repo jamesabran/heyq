@@ -4,22 +4,32 @@
  * order-provider state now (M23/M24); this replaces the module-array access
  * every service used to do directly.
  *
- * In the browser, requests go to same-origin `/api/...` (vite dev proxy routes
- * that to the Node server). Under vitest (`IS_TEST`, same convention as
- * `IS_TEST` in `mock.ts`), requests go to the server `src/test/setup.ts`
- * starts fresh inside each test file's own module registry — that's also what
- * gives each test file an isolated in-memory store, so there is no store-id
- * header to manage here.
+ * In local development the browser talks to same-origin `/api/...` (the vite
+ * dev proxy routes that to the Node server). In production the frontend and the
+ * standalone API live on different domains, so `VITE_API_BASE_URL` (baked in at
+ * build time) points requests at the API origin — `${VITE_API_BASE_URL}/api/...`.
+ * Leave it unset locally to keep the same-origin proxy behavior.
+ *
+ * Under vitest (`IS_TEST`, same convention as `IS_TEST` in `mock.ts`), requests
+ * go to the server `src/test/setup.ts` starts fresh inside each test file's own
+ * module registry — that's also what gives each test file an isolated in-memory
+ * store, so there is no store-id header to manage here.
  */
 const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
 function baseUrl(): string {
-  if (!IS_TEST) return ''; // same-origin; vite proxies /api to the Node server
-  const port = typeof process !== 'undefined' ? process.env?.HEYQ_TEST_API_PORT : undefined;
-  if (!port) {
-    throw new Error('HEYQ_TEST_API_PORT is not set — is src/test/setup.ts starting the test API server?');
+  if (IS_TEST) {
+    const port = typeof process !== 'undefined' ? process.env?.HEYQ_TEST_API_PORT : undefined;
+    if (!port) {
+      throw new Error('HEYQ_TEST_API_PORT is not set — is src/test/setup.ts starting the test API server?');
+    }
+    return `http://localhost:${port}`;
   }
-  return `http://localhost:${port}`;
+  // Browser: default to same-origin (vite dev proxy handles /api locally); in
+  // production VITE_API_BASE_URL selects the standalone API origin. Trailing
+  // slashes are trimmed so we never build a `//api` path.
+  const configured = import.meta.env?.VITE_API_BASE_URL;
+  return configured ? configured.replace(/\/+$/, '') : '';
 }
 
 export function buildQuery(params: Record<string, string | number | boolean | undefined>): string {

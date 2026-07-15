@@ -59,6 +59,29 @@ function readJsonBody(req: IncomingMessage): Promise<any> {
   });
 }
 
+// The frontend is served from a different origin than this API in production,
+// so browser calls are cross-origin and require CORS. Allowed origins: the
+// local Vite dev server (vite.config.ts), the deployed Vercel frontend, and an
+// optional host-configured origin (e.g. a preview or custom domain) via
+// HEYQ_FRONTEND_ORIGIN.
+const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:18020', 'https://heyq.vercel.app'];
+
+function allowedOrigins(): string[] {
+  const configured = process.env.HEYQ_FRONTEND_ORIGIN?.replace(/\/+$/, '');
+  return configured ? [...DEFAULT_ALLOWED_ORIGINS, configured] : DEFAULT_ALLOWED_ORIGINS;
+}
+
+function applyCors(req: IncomingMessage, res: ServerResponse): void {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins().includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Store-Id');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+}
+
 function statusForError(err: unknown): number {
   const msg = err instanceof Error ? err.message : String(err);
   if (/not found/i.test(msg)) return 404;
@@ -338,6 +361,14 @@ const routes: Route[] = [
 ];
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  applyCors(req, res);
+  if (req.method === 'OPTIONS') {
+    // CORS preflight — headers already applied above; no body.
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const url = new URL(req.url ?? '/', 'http://localhost');
   const pathname = url.pathname.startsWith('/api') ? url.pathname.slice(4) || '/' : url.pathname;
   const storeId = (req.headers['x-store-id'] as string | undefined) ?? 'default';

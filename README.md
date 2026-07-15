@@ -60,6 +60,7 @@ sections (§17–§20) of the source-of-truth plan.
 | [`docs/decision-log.md`](docs/decision-log.md) | Key decisions and their rationale (incl. per-milestone) |
 | [`docs/backend-readiness.md`](docs/backend-readiness.md) | API seams, contracts, and productionization gaps (M12) |
 | [`docs/session-state.md`](docs/session-state.md) | Current state, open questions, next steps |
+| [`docs/deployment.md`](docs/deployment.md) | Production deployment: Vercel frontend + standalone Node API, env vars, order |
 
 ## Reference projects (not dependencies)
 
