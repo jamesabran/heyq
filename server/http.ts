@@ -15,6 +15,7 @@ import * as requester from './requester.ts';
 import * as reports from './reports.ts';
 import * as audit from './audit.ts';
 import * as customer from './customer.ts';
+import { attachRealtime, mintAgentToken, mintCustomerToken } from './realtime.ts';
 import { setDown } from './store.ts';
 
 type Params = Record<string, string>;
@@ -190,7 +191,10 @@ const routes: Route[] = [
   {
     // Requester reply — the same action HeyQ's portal performs. Customer-facing.
     method: 'POST', pattern: '/tickets/:id/messages',
-    handler: async (req, p, _q, storeId) => tickets.addRequesterMessage(storeId, p.id, (await readJsonBody(req)).body),
+    handler: async (req, p, _q, storeId) => {
+      const body = await readJsonBody(req);
+      return tickets.addRequesterMessage(storeId, p.id, body.body, body.attachments);
+    },
     access: 'public',
   },
   {
@@ -214,14 +218,14 @@ const routes: Route[] = [
     method: 'POST', pattern: '/tickets/:id/agent-reply',
     handler: async (req, p, _q, storeId) => {
       const body = await readJsonBody(req);
-      return tickets.addAgentReply(storeId, p.id, body.agentId, body.body);
+      return tickets.addAgentReply(storeId, p.id, body.agentId, body.body, body.attachments);
     },
   },
   {
     method: 'POST', pattern: '/tickets/:id/notes',
     handler: async (req, p, _q, storeId) => {
       const body = await readJsonBody(req);
-      return tickets.addInternalNote(storeId, p.id, body.agentId, body.body);
+      return tickets.addInternalNote(storeId, p.id, body.agentId, body.body, body.attachments);
     },
   },
   {
@@ -266,6 +270,13 @@ const routes: Route[] = [
   {
     method: 'POST', pattern: '/tickets/:id/link-transaction',
     handler: async (req, p, _q, storeId) => tickets.linkTransaction(storeId, p.id, (await readJsonBody(req)).transactionId),
+  },
+
+  // ── Realtime connection tokens (short-lived, single-use) ───────────────────
+  // Agent token: internal route (origin-trusted agent app), scoped to the agent.
+  {
+    method: 'POST', pattern: '/realtime/token',
+    handler: async (req, _p, _q, storeId) => mintAgentToken(storeId, (await readJsonBody(req)).agentId ?? ''),
   },
 
   // ── Notifications ────────────────────────────────────────────────────────
@@ -415,6 +426,20 @@ const routes: Route[] = [
     },
     access: 'public',
   },
+  {
+    // Customer realtime token: public route. Verifies the requester may see the
+    // ticket (throws 404 otherwise), then returns a ticket-scoped token.
+    method: 'POST', pattern: '/customer/realtime/token',
+    handler: async (req, _p, _q, storeId) => {
+      const b = await readJsonBody(req);
+      return mintCustomerToken(
+        storeId,
+        { externalUserId: b.externalUserId ?? '', externalOrgId: b.externalOrgId ?? '' },
+        b.ticketId ?? '',
+      );
+    },
+    access: 'public',
+  },
 ];
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -462,12 +487,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   res.end(JSON.stringify({ error: `No route for ${req.method} ${pathname}` }));
 }
 
-/** Create (but do not start) the HeyQ mock API server. */
+/** Create (but do not start) the HeyQ mock API server, with the realtime channel
+ * attached to the same http.Server (WebSocket upgrades on /api/realtime). */
 export function createHeyQServer() {
-  return createServer((req, res) => {
+  const server = createServer((req, res) => {
     handleRequest(req, res).catch((err) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
     });
   });
+  attachRealtime(server);
+  return server;
 }

@@ -15,7 +15,13 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       // The HeyQ mock API server (M23/M24) — run separately via `npm run server`.
-      '/api': `http://localhost:${Number(process.env.HEYQ_API_PORT) || 4310}`,
+      // `ws: true` so the realtime WebSocket upgrade at /api/realtime is proxied
+      // to the Node server in local dev (same-origin), matching the REST proxy.
+      '/api': {
+        target: `http://localhost:${Number(process.env.HEYQ_API_PORT) || 4310}`,
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 });

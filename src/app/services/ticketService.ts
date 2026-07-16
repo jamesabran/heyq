@@ -173,12 +173,12 @@ export async function getTicketDetail(ticketId: string): Promise<TicketDetailVie
   }
 }
 
-export async function addAgentReply(ticketId: string, agentId: string, body: string): Promise<TicketMessage> {
-  return apiPost<TicketMessage>(`/tickets/${ticketId}/agent-reply`, { agentId, body });
+export async function addAgentReply(ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<TicketMessage> {
+  return apiPost<TicketMessage>(`/tickets/${ticketId}/agent-reply`, { agentId, body, attachments });
 }
 
-export async function addInternalNote(ticketId: string, agentId: string, body: string): Promise<InternalNote> {
-  return apiPost<InternalNote>(`/tickets/${ticketId}/notes`, { agentId, body });
+export async function addInternalNote(ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<InternalNote> {
+  return apiPost<InternalNote>(`/tickets/${ticketId}/notes`, { agentId, body, attachments });
 }
 
 export async function resolveTicket(

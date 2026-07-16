@@ -1,21 +1,21 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
-import {
-  addAgentReply,
-  addInternalNote,
-  getTicketDetail,
-  resolveTicket,
-} from '../../services/ticketService';
+import { IconChevronRight } from '@tabler/icons-react';
+import { getTicketDetail, resolveTicket } from '../../services/ticketService';
 import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
+import { useTicketRealtime } from '../../hooks/useTicketRealtime';
 import { useIdentity } from '../../contexts/IdentityContext';
 import {
   CONCERN_TYPE_LABELS,
   SOURCE_SYSTEM_LABELS,
   RESOLUTION_LABELS,
+  type InternalNote,
   type ResolutionType,
+  type TicketMessage,
 } from '../../models/ticket';
-import { formatDate, formatDateTime } from '../../lib/utils';
+import { formatDate, formatDateTime, cn } from '../../lib/utils';
+import { realtimeSupported, type RealtimeStatus } from '../../lib/realtimeClient';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -25,42 +25,54 @@ import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { StatusChip } from '../../components/ticket/StatusChip';
 import { EscalationIndicator, PriorityBadge, SlaBadge } from '../../components/ticket/badges';
 import { Badge } from '../../components/ui/Badge';
-import { AgentConversation } from '../../components/ticket/AgentConversation';
+import { ChatThread } from '../../components/ticket/ChatThread';
 import { TicketComposer } from '../../components/ticket/TicketComposer';
 import { TicketActions } from '../../components/ticket/TicketActions';
 import { TransactionPanel } from '../../components/ticket/TransactionPanel';
 import { LinkedOrderPanel } from '../../components/ticket/LinkedOrderPanel';
 import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
+// Stable empty arrays so the realtime hook's base props keep identity while the
+// detail query is still loading (no needless re-subscribes / re-renders).
+const NO_MESSAGES: TicketMessage[] = [];
+const NO_NOTES: InternalNote[] = [];
+
 export function TicketDetail() {
   const { id = '' } = useParams();
   const { identity } = useIdentity();
   const [version, setVersion] = useState(0);
-  const refresh = () => setVersion((v) => v + 1);
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
   const detail = useQuery(useCallback(() => getTicketDetail(id), [id]), [id, version]);
   const view = detail.data;
 
-  const reply = useMutation(addAgentReply);
-  const note = useMutation(addInternalNote);
-  const resolve = useMutation(resolveTicket);
+  // Live conversation: overlays realtime events on the fetched history, renders
+  // optimistic sends, tracks typing + connection, and refetches on (re)connect.
+  const rt = useTicketRealtime({
+    ticketId: id,
+    agentId: identity.id,
+    baseMessages: view?.messages ?? NO_MESSAGES,
+    baseNotes: view?.notes ?? NO_NOTES,
+    refetchDetail: refresh,
+  });
 
+  const resolve = useMutation(resolveTicket);
   const [resolution, setResolution] = useState<ResolutionType>('solved');
   const [resolveNote, setResolveNote] = useState('');
 
   if (detail.error) return <ErrorState onRetry={detail.refetch} />;
-  if (detail.loading) return <LoadingGrid count={3} />;
+  if (detail.loading && !view) return <LoadingGrid count={3} />;
   if (!view) {
     return <EmptyState title="Ticket not found">This ticket doesn&apos;t exist.</EmptyState>;
   }
 
-  const { ticket, requester, teamName, categoryName, subcategoryName, assigneeName, messages, notes, timeline, sla } = view;
-  const busy = reply.loading || note.loading;
+  const { ticket, requester, teamName, categoryName, subcategoryName, assigneeName, timeline, sla } = view;
   const isClosedish = ticket.status === 'resolved' || ticket.status === 'closed';
 
-  async function onCompose(mode: 'reply' | 'note', body: string) {
-    if (mode === 'reply') await reply.mutate(id, identity.id, body);
-    else await note.mutate(id, identity.id, body);
+  async function onCompose(mode: 'reply' | 'note', body: string, attachments?: TicketMessage['attachments']) {
+    if (mode === 'reply') await rt.sendReply(body, attachments);
+    else await rt.sendNote(body, attachments);
+    // Keep the status chip / SLA / first-response fresh even without a live event.
     refresh();
   }
 
@@ -79,7 +91,6 @@ export function TicketDetail() {
           <p className="text-sm text-muted-foreground">{ticket.reference}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Reopened is a flag, so it sits beside the status rather than replacing it. */}
           {ticket.reopenedAt && (
             <Badge variant="outline" title={`Reopened ${formatDate(ticket.reopenedAt)}`}>Reopened</Badge>
           )}
@@ -88,21 +99,22 @@ export function TicketDetail() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_260px]">
-        {/* Left: context */}
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader><CardTitle>Requester</CardTitle></CardHeader>
-            <CardContent className="flex flex-col gap-1 text-sm">
+      {/* Conversation-dominant layout: ~23% context · ~54% conversation · ~23%
+          actions on desktop. Below xl the columns stack with the conversation
+          FIRST and the side panels collapse into accordions. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(240px,23%)_minmax(0,1fr)_minmax(240px,23%)]">
+        {/* Left: context (secondary — collapsible, and last on narrow screens). */}
+        <div className="order-2 flex min-w-0 flex-col gap-3 xl:order-none">
+          <CollapsibleCard title="Requester" defaultOpen>
+            <div className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-foreground">{requester.name}</span>
               <span className="text-muted-foreground">{requester.email}</span>
               {requester.mobile && <span className="text-muted-foreground">{requester.mobile}</span>}
-            </CardContent>
-          </Card>
+            </div>
+          </CollapsibleCard>
 
-          <Card>
-            <CardHeader><CardTitle>Classification</CardTitle></CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
+          <CollapsibleCard title="Classification" defaultOpen>
+            <div className="flex flex-col gap-2 text-sm">
               <Row label="Concern" value={subcategoryName ? `${categoryName} · ${subcategoryName}` : categoryName} />
               <Row label="Concern type" value={ticket.concernType ? CONCERN_TYPE_LABELS[ticket.concernType] : 'Unset'} />
               <Row label="Team" value={teamName} />
@@ -114,19 +126,13 @@ export function TicketDetail() {
               </div>
               <Row label="Escalation" value={ticket.escalationState === 'none' ? 'Not escalated' : ticket.escalationState.replace(/_/g, ' ')} />
               <Row label="Source" value={ticket.source} />
-              {ticket.sourceSystem && (
-                <Row label="Source system" value={SOURCE_SYSTEM_LABELS[ticket.sourceSystem]} />
-              )}
+              {ticket.sourceSystem && <Row label="Source system" value={SOURCE_SYSTEM_LABELS[ticket.sourceSystem]} />}
               {ticket.source === 'internal' && (
-                <Row
-                  label="Requester notifications"
-                  value={ticket.requesterNotificationsEnabled ? 'Enabled' : 'Off'}
-                />
+                <Row label="Requester notifications" value={ticket.requesterNotificationsEnabled ? 'Enabled' : 'Off'} />
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </CollapsibleCard>
 
-          {/* Business+ linked order (M22) — snapshot-first order context. */}
           {ticket.linkedOrder && <LinkedOrderPanel order={ticket.linkedOrder} />}
 
           <TransactionPanel
@@ -136,9 +142,8 @@ export function TicketDetail() {
             onChanged={refresh}
           />
 
-          <Card>
-            <CardHeader><CardTitle>SLA</CardTitle></CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
+          <CollapsibleCard title="SLA" defaultOpen>
+            <div className="flex flex-col gap-2 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">First response</span>
                 <SlaBadge target={sla.firstResponse} />
@@ -147,35 +152,51 @@ export function TicketDetail() {
                 <span className="text-muted-foreground">Resolution</span>
                 <SlaBadge target={sla.resolution} />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </CollapsibleCard>
 
-          <Card>
-            <CardHeader><CardTitle>Activity</CardTitle></CardHeader>
-            <CardContent>
-              <ol className="flex flex-col gap-3">
-                {timeline.map((e) => (
-                  <li key={e.id} className="text-sm">
-                    <p className="text-foreground">{e.summary}</p>
-                    <p className="text-xs text-muted-foreground">{e.actor} · {formatDateTime(e.timestamp)}</p>
-                  </li>
-                ))}
-              </ol>
-            </CardContent>
-          </Card>
+          <CollapsibleCard title="Activity" defaultOpen>
+            <ol className="flex flex-col gap-3">
+              {timeline.map((e) => (
+                <li key={e.id} className="text-sm">
+                  <p className="text-foreground">{e.summary}</p>
+                  <p className="text-xs text-muted-foreground">{e.actor} · {formatDateTime(e.timestamp)}</p>
+                </li>
+              ))}
+            </ol>
+          </CollapsibleCard>
         </div>
 
-        {/* Center: conversation */}
-        <Card>
-          <CardHeader><CardTitle>Conversation</CardTitle></CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <AgentConversation messages={messages} notes={notes} />
-            <TicketComposer onSubmit={onCompose} busy={busy} />
-          </CardContent>
-        </Card>
+        {/* Center: the conversation — the dominant, elevated area. Its header stays
+            visible while history scrolls; the composer is pinned at the bottom. */}
+        <section className="order-1 flex min-w-0 flex-col xl:order-none">
+          <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-md ring-1 ring-black/5 dark:ring-white/5 xl:sticky xl:top-4 xl:h-[calc(100vh-6rem)]">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+              <h2 className="font-semibold text-foreground">Conversation</h2>
+              {realtimeSupported && <ConnectionBadge status={rt.connection} />}
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              <ChatThread
+                messages={rt.messages}
+                notes={rt.notes}
+                pending={rt.pending}
+                requesterName={requester.name}
+                onRetry={rt.retryPending}
+              />
+            </div>
+            <div className="border-t border-border px-4 py-3">
+              {rt.typingLabel && (
+                <p className="mb-2 flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+                  <TypingDots /> {rt.typingLabel} is typing…
+                </p>
+              )}
+              <TicketComposer onSubmit={onCompose} onTyping={rt.notifyTyping} />
+            </div>
+          </div>
+        </section>
 
-        {/* Right: actions */}
-        <div className="flex flex-col gap-4">
+        {/* Right: actions (secondary). */}
+        <div className="order-3 flex min-w-0 flex-col gap-3 xl:order-none">
           <Card>
             <CardHeader><CardTitle>Resolve</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-3">
@@ -213,5 +234,44 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium capitalize text-foreground">{value}</span>
     </div>
+  );
+}
+
+/** A side-panel section that collapses on demand (accordion affordance on mobile). */
+function CollapsibleCard({ title, defaultOpen, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
+  return (
+    <details open={defaultOpen} className="group rounded-xl border border-border bg-card text-card-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+        <IconChevronRight size={16} className="text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
+        {title}
+      </summary>
+      <div className="border-t border-border px-4 py-3">{children}</div>
+    </details>
+  );
+}
+
+const CONNECTION_META: Record<RealtimeStatus, { dot: string; label: string }> = {
+  live: { dot: 'bg-green-500', label: 'Live' },
+  connecting: { dot: 'bg-amber-500', label: 'Connecting…' },
+  offline: { dot: 'bg-muted-foreground', label: 'Reconnecting…' },
+};
+
+function ConnectionBadge({ status }: { status: RealtimeStatus }) {
+  const meta = CONNECTION_META[status];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={`Realtime: ${meta.label}`}>
+      <span className={cn('size-2 rounded-full', meta.dot)} aria-hidden="true" />
+      {meta.label}
+    </span>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex gap-0.5" aria-hidden="true">
+      <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+      <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+      <span className="size-1 animate-bounce rounded-full bg-muted-foreground" />
+    </span>
   );
 }

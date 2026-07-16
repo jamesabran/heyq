@@ -45,6 +45,23 @@ callers send no `Origin` and are unaffected; the agent frontend is not a custome
 origin. `public` routes: `GET /health`, `GET /customer/tickets`,
 `GET /customer/tickets/:id`, `POST /customer/tickets` (create), `POST /tickets/:id/messages`, `POST /tickets/:id/reopen`.
 
+## Realtime (WebSocket) channel
+
+Live ticket conversations use a WebSocket endpoint on the **same** API server and
+origin: `wss://<api-origin>/api/realtime` (see `docs/realtime-conversations.md`).
+
+- It is attached to the existing `http.Server` via the HTTP `upgrade` event
+  (`server/realtime.ts`), so it needs **no separate service, port, or process** —
+  `npm start` serves both REST and WebSocket.
+- **Railway** proxies WebSockets to the app with no extra configuration. Because
+  state (and the in-process subscription registry) lives in one instance, keep
+  **`numReplicas: 1`** — the same single-instance requirement the in-memory store
+  already imposes.
+- In local dev the Vite proxy forwards the upgrade (`server.proxy['/api'].ws:
+  true` in `vite.config.ts`), so the browser talks same-origin.
+- No new environment variables. The frontend derives the `ws(s)://` URL from the
+  same `VITE_API_BASE_URL` used for REST (or same-origin in dev).
+
 ## Vercel (frontend) settings
 
 - **Framework preset:** Vite

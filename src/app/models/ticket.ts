@@ -174,6 +174,8 @@ export interface InternalNote {
   agentId: string;
   agentName: string;
   body: string;
+  /** Attachment METADATA only (name/size/type). Agent-only, like the note. */
+  attachments?: MockAttachment[];
   createdAt: string;
 }
 
@@ -186,6 +188,8 @@ export interface TicketMessage {
   authorId: string;
   authorName: string;
   body: string;
+  /** Attachment METADATA only (name/size/type) sent with a public reply. */
+  attachments?: MockAttachment[];
   channel: 'web' | 'email';
   visibility: 'public';
   createdAt: string;
@@ -403,6 +407,8 @@ export interface CustomerTicketMessage {
   /** Team name for support replies (e.g. "Claims"), or "You"/"HeyQ". */
   authorLabel: string;
   body: string;
+  /** Attachments on this PUBLIC message — safe to show the customer. */
+  attachments?: MockAttachment[];
   createdAt: string;
 }
 

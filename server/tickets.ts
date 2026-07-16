@@ -54,6 +54,11 @@ import { computeSlaSummary, isSlaAtRiskOrBreached } from '../src/app/services/sl
 import { clone, makeId, nowIso, simulateLatency } from '../src/app/lib/mock.ts';
 import { emit } from './notifications.ts';
 import { getAuthorizedOrder, type OrderProviderIdentity } from './orderProvider.ts';
+import {
+  publishAssignmentChanged,
+  publishMessage,
+  publishStatusChanged,
+} from './realtime.ts';
 import { getStore, type Store } from './store.ts';
 
 const BRAND = 'ggx';
@@ -430,17 +435,20 @@ function reopen(store: Store, ticket: Ticket, actor: string, note: string) {
 const isClosedOut = (t: Ticket) => t.status === 'resolved' || t.status === 'closed';
 
 /** Requester posts a public reply. A hold on them lifts; a closed-out ticket reopens. */
-export async function addRequesterMessage(storeId: string, ticketId: string, body: string): Promise<TicketMessage> {
+export async function addRequesterMessage(storeId: string, ticketId: string, body: string, attachments?: MockAttachment[]): Promise<TicketMessage> {
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
   const requester = store.requesters.find((r) => r.id === ticket.requesterId);
   const now = nowIso();
+  const fromStatus = ticket.status;
 
   const message: TicketMessage = {
     id: makeId('msg'), ticketId, authorType: 'requester', authorId: ticket.requesterId,
-    authorName: requester?.name ?? 'Requester', body: body.trim(), channel: 'web', visibility: 'public', createdAt: now,
+    authorName: requester?.name ?? 'Requester', body: body.trim(),
+    attachments: attachments?.length ? attachments : undefined,
+    channel: 'web', visibility: 'public', createdAt: now,
   };
   store.ticketMessages.push(message);
   ticket.updatedAt = now;
@@ -455,6 +463,11 @@ export async function addRequesterMessage(storeId: string, ticketId: string, bod
   if (ticket.assigneeId) {
     emit(storeId, { recipientId: ticket.assigneeId, event: 'requester_replied', title: `New reply from ${requester?.name ?? 'requester'}`, ticketId: ticket.id, ticketRef: ticket.reference });
   }
+
+  // Persisted → now broadcast. The reply reaches agents AND the customer channel;
+  // a status change (hold lifted / reopened) is broadcast too.
+  publishMessage(storeId, ticket, { kind: 'public', message });
+  if (ticket.status !== fromStatus) publishStatusChanged(storeId, ticket, 'requester', fromStatus);
   return clone(message);
 }
 
@@ -464,7 +477,9 @@ export async function reopenTicket(storeId: string, ticketId: string): Promise<T
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
+  const fromStatus = ticket.status;
   if (isClosedOut(ticket)) reopen(store, ticket, 'requester', 'Reopened by requester');
+  if (ticket.status !== fromStatus) publishStatusChanged(storeId, ticket, 'requester', fromStatus);
   return clone(ticket);
 }
 
@@ -479,8 +494,10 @@ export async function holdTicket(storeId: string, ticketId: string, agentId: str
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = requireTicket(store, ticketId);
+  const fromStatus = ticket.status;
   ticket.holdReason = reason;
   transition(store, ticket, 'on_hold', agentId, note ?? HOLD_REASON_LABELS[reason]);
+  publishStatusChanged(storeId, ticket, 'agent', fromStatus);
   return clone(ticket);
 }
 
@@ -489,7 +506,9 @@ export async function resumeTicket(storeId: string, ticketId: string, agentId: s
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = requireTicket(store, ticketId);
+  const fromStatus = ticket.status;
   if (ticket.status === 'on_hold') transition(store, ticket, 'in_progress', agentId, 'Resumed from hold');
+  if (ticket.status !== fromStatus) publishStatusChanged(storeId, ticket, 'agent', fromStatus);
   return clone(ticket);
 }
 
@@ -673,16 +692,19 @@ export async function getTicketDetail(storeId: string, ticketId: string): Promis
 }
 
 /** Agent posts a public reply. Sets first-response and moves New/Open into progress. */
-export async function addAgentReply(storeId: string, ticketId: string, agentId: string, body: string): Promise<TicketMessage> {
+export async function addAgentReply(storeId: string, ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<TicketMessage> {
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
   const now = nowIso();
+  const fromStatus = ticket.status;
 
   const message: TicketMessage = {
     id: makeId('msg'), ticketId, authorType: 'agent', authorId: agentId,
-    authorName: agentName(agentId) ?? 'Support', body: body.trim(), channel: 'web', visibility: 'public', createdAt: now,
+    authorName: agentName(agentId) ?? 'Support', body: body.trim(),
+    attachments: attachments?.length ? attachments : undefined,
+    channel: 'web', visibility: 'public', createdAt: now,
   };
   store.ticketMessages.push(message);
   ticket.updatedAt = now;
@@ -698,21 +720,29 @@ export async function addAgentReply(storeId: string, ticketId: string, agentId: 
     title: notify ? `Reply emailed to requester on ${ticket.reference}` : `Reply added to ${ticket.reference} (requester notifications off)`,
     ticketId: ticket.id, ticketRef: ticket.reference, emailed: notify,
   });
+
+  // Persisted → broadcast. A public reply reaches agents AND the customer channel.
+  publishMessage(storeId, ticket, { kind: 'public', message });
+  if (ticket.status !== fromStatus) publishStatusChanged(storeId, ticket, 'agent', fromStatus);
   return clone(message);
 }
 
 /** Agent adds an internal note (never visible to requesters). */
-export async function addInternalNote(storeId: string, ticketId: string, agentId: string, body: string): Promise<InternalNote> {
+export async function addInternalNote(storeId: string, ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<InternalNote> {
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
   const now = nowIso();
   const note: InternalNote = {
-    id: makeId('note'), ticketId, agentId, agentName: agentName(agentId) ?? 'Agent', body: body.trim(), createdAt: now,
+    id: makeId('note'), ticketId, agentId, agentName: agentName(agentId) ?? 'Agent', body: body.trim(),
+    attachments: attachments?.length ? attachments : undefined,
+    createdAt: now,
   };
   store.internalNotes.push(note);
   ticket.updatedAt = now;
+  // Internal notes broadcast to AGENT subscribers only — never to customers.
+  publishMessage(storeId, ticket, { kind: 'note', note });
   return clone(note);
 }
 
@@ -728,9 +758,11 @@ export async function resolveTicket(
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
+  const fromStatus = ticket.status;
   ticket.resolutionType = resolutionType;
   ticket.resolvedAt = nowIso();
   transition(store, ticket, 'resolved', agentId, note);
+  publishStatusChanged(storeId, ticket, 'agent', fromStatus);
   const notify = requesterNotificationsOn(ticket);
   emit(storeId, {
     recipientId: agentId,
@@ -763,6 +795,7 @@ export async function assignTicket(storeId: string, ticketId: string, actor: str
   if (toAssigneeId && toAssigneeId !== from) {
     emit(storeId, { recipientId: toAssigneeId, event: 'ticket_assigned', title: `Assigned: ${ticket.subject}`, ticketId: ticket.id, ticketRef: ticket.reference });
   }
+  publishAssignmentChanged(storeId, ticket, 'agent', agentName(ticket.assigneeId));
   return clone(ticket);
 }
 
@@ -841,6 +874,8 @@ export async function escalateTicket(storeId: string, ticketId: string, actor: s
   recordAssignment(store, ticket, actor, fromAssignee, fromTeam);
   const escalationRecipient = input.toAssigneeId ?? actor;
   emit(storeId, { recipientId: escalationRecipient, event: 'ticket_escalated', title: `Escalated: ${ticket.subject}`, ticketId: ticket.id, ticketRef: ticket.reference });
+  // Escalation changes team/owner (agent-only) but NOT status (rule #2).
+  publishAssignmentChanged(storeId, ticket, 'agent', agentName(ticket.assigneeId));
   // Note: status deliberately not changed.
   return clone(ticket);
 }
@@ -877,5 +912,6 @@ export async function deescalateTicket(storeId: string, ticketId: string, actor:
     fromTier: 'L2', toTier: 'L1', fromTeamId: fromTeam, toTeamId: toTeam,
     note: note.trim() || 'Returned to L1', timestamp: now,
   });
+  publishAssignmentChanged(storeId, ticket, 'agent', agentName(ticket.assigneeId));
   return clone(ticket);
 }

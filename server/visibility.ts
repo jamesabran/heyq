@@ -106,14 +106,20 @@ export function toCustomerTicket(
 
 /**
  * Public messages only, with the author reduced to a role + the handling team.
- * An agent's real name never crosses this line.
+ * An agent's real name never crosses this line. Attachments on a public message
+ * are safe to include (they were shared on that public message); internal-note
+ * attachments never reach here because notes are a separate type entirely.
+ *
+ * Exported so the realtime channel projects a live `message.created` to customer
+ * subscribers exactly the way the REST read does — one projection, no drift.
  */
-function toCustomerMessage(m: TicketMessage, supportTeam: string): CustomerTicketMessage {
+export function toCustomerMessage(m: TicketMessage, supportTeam: string): CustomerTicketMessage {
+  const attachments = m.attachments;
   if (m.authorType === 'requester') {
-    return { id: m.id, from: 'you', authorLabel: 'You', body: m.body, createdAt: m.createdAt };
+    return { id: m.id, from: 'you', authorLabel: 'You', body: m.body, attachments, createdAt: m.createdAt };
   }
   if (m.authorType === 'system') {
-    return { id: m.id, from: 'system', authorLabel: 'HeyQ', body: m.body, createdAt: m.createdAt };
+    return { id: m.id, from: 'system', authorLabel: 'HeyQ', body: m.body, attachments, createdAt: m.createdAt };
   }
-  return { id: m.id, from: 'support', authorLabel: supportTeam, body: m.body, createdAt: m.createdAt };
+  return { id: m.id, from: 'support', authorLabel: supportTeam, body: m.body, attachments, createdAt: m.createdAt };
 }

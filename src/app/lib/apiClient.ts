@@ -32,6 +32,23 @@ function baseUrl(): string {
   return configured ? configured.replace(/\/+$/, '') : '';
 }
 
+/**
+ * The WebSocket URL for the realtime channel (server/realtime.ts), derived from
+ * the same origin resolution the REST client uses:
+ *   • test  → ws://localhost:<HEYQ_TEST_API_PORT>/api/realtime
+ *   • prod  → wss://<VITE_API_BASE_URL host>/api/realtime  (http→ws, https→wss)
+ *   • dev   → same-origin ws(s), proxied to the Node server by Vite (ws:true)
+ */
+export function realtimeUrl(): string {
+  const base = baseUrl();
+  if (base) return `${base.replace(/^http/, 'ws')}/api/realtime`;
+  if (typeof window !== 'undefined') {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/api/realtime`;
+  }
+  return '';
+}
+
 export function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
