@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router';
-import { IconChevronRight } from '@tabler/icons-react';
+import { Link, useParams } from 'react-router';
+import { IconChevronRight, IconClipboardCheck } from '@tabler/icons-react';
 import { getTicketDetail, resolveTicket } from '../../services/ticketService';
 import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
@@ -16,8 +16,9 @@ import {
 } from '../../models/ticket';
 import { formatDate, formatDateTime, cn } from '../../lib/utils';
 import { realtimeSupported, type RealtimeStatus } from '../../lib/realtimeClient';
+import { hasRole, REVIEW_ROLES } from '../../lib/roles';
 import { Alert } from '../../components/ui/Alert';
-import { Button } from '../../components/ui/Button';
+import { Button, buttonVariants } from '../../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
@@ -91,6 +92,16 @@ export function TicketDetail() {
           <p className="text-sm text-muted-foreground">{ticket.reference}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Supervisor entry point into the quality review workspace. Only offered
+              when there is an assigned agent to review, and only to reviewers. */}
+          {ticket.assigneeId && hasRole(identity.role, REVIEW_ROLES) && (
+            <Link
+              to={`/app/reviews/${ticket.id}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              <IconClipboardCheck size={15} /> Start quality review
+            </Link>
+          )}
           {ticket.reopenedAt && (
             <Badge variant="outline" title={`Reopened ${formatDate(ticket.reopenedAt)}`}>Reopened</Badge>
           )}

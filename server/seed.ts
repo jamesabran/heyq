@@ -25,6 +25,8 @@ import type {
   Ticket,
   TicketMessage,
 } from '../src/app/models/ticket.ts';
+import type { QualityReview } from '../src/app/models/review.ts';
+import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
 import type { Notification, NotificationEvent } from '../src/app/models/notification.ts';
 import type {
   BusinessPlusOrderRecord,
@@ -49,6 +51,10 @@ export interface SeedState {
   assignments: Assignment[];
   escalations: Escalation[];
   requesterAccess: RequesterAccess[];
+  // Quality reviews (Supervisor feature) — a lead's structured assessment of how
+  // an agent handled a ticket. Kept in the same store because the workspace reads
+  // ticket evidence and the review together; reviews never mutate ticket state.
+  qualityReviews: QualityReview[];
   referenceSeq: number;
   // Notifications (ported from src/app/data/notifications.ts, M23/M24 — HeyQ is
   // the sole owner of ticket state, and emit() fires synchronously inside the
@@ -618,6 +624,48 @@ function seed(): SeedState {
     // portal access, so there is nothing for a customer to open.
   ];
 
+  // ── Quality reviews (Supervisor) ──────────────────────────────────────────
+  // One COMPLETED review (feeds the "Completed" column and the score filter) and
+  // one DRAFT (the "In progress" column). Every other assigned ticket falls into
+  // "To review". Carlo Reyes (team_lead) is the reviewer in both.
+  const completedResponses = {
+    greeting: 'yes', empathy: 'yes', clarity: 'yes', respectful_tone: 'yes',
+    reviewed_context: 'yes', used_evidence: 'yes', took_ownership: 'yes', accurate_diagnosis: 'yes',
+    followed_process: 'yes', complete_resolution: 'yes', set_expectations: 'na', timely_handling: 'no',
+    verified_identity: 'yes', data_privacy: 'yes', no_unauthorized_promises: 'yes',
+  } as const;
+
+  const qualityReviews: QualityReview[] = [
+    {
+      // tkt-bp-3 — Alex Cruz (l1_agent) resolved a COD shortfall correctly, but a
+      // little slowly. Strong review with one N/A and one No; no zero-tolerance
+      // finding. Score is FROZEN against rubric v1 at submission.
+      id: 'qr-seed-1', ticketId: 'tkt-bp-3', agentId: 'l1_agent', reviewerId: 'team_lead',
+      status: 'submitted', rubricVersion: 'v1',
+      responses: { ...completedResponses },
+      feedback: {
+        whatWentWell: 'Spotted the partial remittance quickly and explained the correction clearly.',
+        areasForImprovement: 'First response took longer than our target — pick these up sooner.',
+        reviewerComments: 'Solid handling overall. Good, empathetic close.',
+      },
+      score: computeReviewScore({ ...completedResponses }),
+      createdAt: '2026-06-03T01:00:00Z', updatedAt: '2026-06-03T01:20:00Z', submittedAt: '2026-06-03T01:20:00Z',
+    },
+    {
+      // tkt-seed-7 — Bea Santos (l2_specialist), escalated high-value lost parcel.
+      // A draft the lead has started but not finished (required lines still open).
+      id: 'qr-seed-2', ticketId: 'tkt-seed-7', agentId: 'l2_specialist', reviewerId: 'team_lead',
+      status: 'draft', rubricVersion: 'v1',
+      responses: { empathy: 'yes', respectful_tone: 'yes', reviewed_context: 'yes', used_evidence: 'yes' },
+      feedback: {
+        whatWentWell: 'Opened a hub trace promptly and kept the internal note trail tidy.',
+        areasForImprovement: '',
+        reviewerComments: '',
+      },
+      createdAt: '2026-07-14T02:00:00Z', updatedAt: '2026-07-14T02:10:00Z',
+    },
+  ];
+
   const notifications: Notification[] = [
     { id: 'ntf-seed-1', recipientId: 'l1_agent', event: 'requester_replied', title: 'New reply from Liza Aquino', ticketId: 'tkt-seed-1', ticketRef: 'HQ-2026-0001', emailed: false, read: false, createdAt: '2026-07-14T07:30:00Z' },
     { id: 'ntf-seed-2', recipientId: 'l1_agent', event: 'ticket_assigned', title: 'Assigned: Cannot log in to my account', ticketId: 'tkt-seed-5', ticketRef: 'HQ-2026-0005', emailed: false, read: false, createdAt: '2026-07-13T20:05:00Z' },
@@ -729,6 +777,7 @@ function seed(): SeedState {
     assignments,
     escalations,
     requesterAccess,
+    qualityReviews,
     // Running reference counter, seeded past the demo tickets.
     referenceSeq: 107,
     notifications,

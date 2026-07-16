@@ -48,6 +48,7 @@ const ROUTES: { name: string; path: string; identity: string; expect: RegExp }[]
   { name: 'saved-views', path: '/app/views', identity: 'l1_agent', expect: /saved views/i },
   { name: 'ticket-detail', path: '/app/tickets/tkt-seed-7', identity: 'admin', expect: /lost parcel/i },
   { name: 'reports', path: '/app/reports', identity: 'admin', expect: /reports/i },
+  { name: 'quality-reviews', path: '/app/reviews', identity: 'team_lead', expect: /quality reviews/i },
   { name: 'audit-log', path: '/admin/audit', identity: 'admin', expect: /audit log/i },
   { name: 'contact', path: '/contact', identity: 'guest', expect: /submit a ticket|contact/i },
 ];
@@ -163,6 +164,27 @@ test('an agent sees linked-order context, and live shipment never moves ticket s
   await expect(page.getByText(/changed since submission/i)).toBeVisible();
   await expect(page.getByText('Delivered', { exact: true })).toBeVisible();
   await expect(page.getByText('Open', { exact: true }).first()).toBeVisible();
+});
+
+test('a lead opens a completed quality review and sees read-only evidence + score', async ({ page }) => {
+  await visitAs(page, '/app/reviews', 'team_lead');
+  await expect(page.getByRole('heading', { name: 'Quality Reviews' })).toBeVisible();
+
+  // The seeded completed review (tkt-bp-3 → HQ-2026-0103) opens the workspace.
+  await page.getByRole('link', { name: 'HQ-2026-0103' }).click();
+  await expect(page.getByRole('heading', { name: /quality review/i })).toBeVisible();
+
+  // Evidence is present and read-only — the conversation shows, no reply composer.
+  await expect(page.getByRole('heading', { name: 'Conversation' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /save draft/i })).toHaveCount(0);
+  // The frozen score is shown and the review is locked.
+  await expect(page.getByText('96%').first()).toBeVisible();
+  await expect(page.getByText(/final and can no longer be edited/i)).toBeVisible();
+});
+
+test('a non-reviewer cannot reach the Quality Reviews page', async ({ page }) => {
+  await visitAs(page, '/app/reviews', 'l1_agent');
+  await expect(page.getByText(/access restricted/i)).toBeVisible();
 });
 
 test('dark mode renders the app with no runtime errors', async ({ page }, testInfo) => {

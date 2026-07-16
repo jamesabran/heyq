@@ -7,6 +7,7 @@ import {
   IconBookmark,
   IconCategory,
   IconChartBar,
+  IconClipboardCheck,
   IconClock,
   IconHistory,
   IconId,
@@ -25,6 +26,7 @@ import {
   KB_ROLES,
   LEAD_ROLES,
   OVERVIEW_ROLES,
+  REVIEW_ROLES,
   type Role,
 } from '../lib/roles';
 
@@ -76,6 +78,7 @@ export const APP_NAV: NavSection[] = [
     label: 'Supervisor',
     items: [
       { label: 'Team Dashboard', to: '/app/supervisor', icon: IconLayoutDashboard, roles: LEAD_ROLES },
+      { label: 'Quality Reviews', to: '/app/reviews', icon: IconClipboardCheck, roles: REVIEW_ROLES },
       { label: 'Reports', to: '/app/reports', icon: IconChartBar, roles: LEAD_ROLES },
     ],
   },

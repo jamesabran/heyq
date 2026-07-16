@@ -15,6 +15,7 @@ import * as requester from './requester.ts';
 import * as reports from './reports.ts';
 import * as audit from './audit.ts';
 import * as customer from './customer.ts';
+import * as reviews from './reviews.ts';
 import { attachRealtime, mintAgentToken, mintCustomerToken } from './realtime.ts';
 import { setDown } from './store.ts';
 
@@ -380,6 +381,42 @@ const routes: Route[] = [
   {
     method: 'GET', pattern: '/audit/tickets/actors',
     handler: async (_req, _p, _q, storeId) => audit.listTicketAuditActors(storeId),
+  },
+
+  // ── Quality reviews (Supervisor) — internal only, never customer-facing ─────
+  {
+    method: 'GET', pattern: '/reviews',
+    handler: async (_req, _p, _q, storeId) => reviews.listReviews(storeId),
+  },
+  {
+    method: 'GET', pattern: '/reviews/reviewable',
+    handler: async (_req, _p, q, storeId) => reviews.listReviewable(storeId, q.get('agentId') ?? undefined),
+  },
+  {
+    method: 'GET', pattern: '/reviews/workspace/:ticketId',
+    handler: async (_req, p, _q, storeId) => {
+      const data = await reviews.getWorkspace(storeId, p.ticketId);
+      if (!data) throw new Error('Ticket not found');
+      return data;
+    },
+  },
+  {
+    method: 'POST', pattern: '/reviews/draft',
+    handler: async (req, _p, _q, storeId) => {
+      const b = await readJsonBody(req);
+      return reviews.saveDraft(storeId, {
+        ticketId: b.ticketId, reviewerId: b.reviewerId, responses: b.responses ?? {}, feedback: b.feedback,
+      });
+    },
+  },
+  {
+    method: 'POST', pattern: '/reviews/submit',
+    handler: async (req, _p, _q, storeId) => {
+      const b = await readJsonBody(req);
+      return reviews.submitReview(storeId, {
+        ticketId: b.ticketId, reviewerId: b.reviewerId, responses: b.responses ?? {}, feedback: b.feedback,
+      });
+    },
   },
 
   // ── Customer (Business+) visibility surface ─────────────────────────────

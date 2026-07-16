@@ -25,6 +25,11 @@ export const ROLE_LABELS: Record<Role, string> = {
 // drift. Derived from the capability matrix (docs/roles-and-ui-permissions.md).
 export const AGENT_ROLES: Role[] = ['l1_agent', 'l2_specialist', 'team_lead', 'admin'];
 export const LEAD_ROLES: Role[] = ['team_lead', 'admin'];
+// Who may create and submit quality reviews: supervisors / team leads / quality
+// reviewers. In this demo role set that maps to team leads and admins — the same
+// authority that owns the supervisor dashboard. Kept as its own group so the
+// review surface can diverge from LEAD_ROLES later without touching call sites.
+export const REVIEW_ROLES: Role[] = ['team_lead', 'admin'];
 export const KB_ROLES: Role[] = ['kb_editor', 'admin'];
 export const ADMIN_ROLES: Role[] = ['admin'];
 export const AUDIT_ROLES: Role[] = ['team_lead', 'admin'];
