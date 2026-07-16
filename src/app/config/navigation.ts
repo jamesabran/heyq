@@ -3,12 +3,13 @@ import {
   IconArchive,
   IconArrowUp,
   IconBell,
-  IconBook,
   IconBookmark,
   IconCategory,
   IconChartBar,
   IconClipboardCheck,
   IconClock,
+  IconGavel,
+  IconHelpCircle,
   IconHistory,
   IconId,
   IconInbox,
@@ -85,7 +86,10 @@ export const APP_NAV: NavSection[] = [
   {
     id: 'kb',
     label: 'Knowledge Base',
-    items: [{ label: 'Manage Articles', to: '/admin/kb', icon: IconBook, roles: KB_ROLES }],
+    items: [
+      { label: 'FAQs', to: '/admin/kb/faqs', icon: IconHelpCircle, roles: KB_ROLES },
+      { label: 'TOS & Policies', to: '/admin/kb/legal', icon: IconGavel, roles: KB_ROLES },
+    ],
   },
   {
     id: 'admin',

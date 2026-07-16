@@ -8,6 +8,8 @@ import { HelpHome } from './pages/help/HelpHome';
 import { HelpCategory } from './pages/help/HelpCategory';
 import { HelpArticle } from './pages/help/HelpArticle';
 import { HelpSearch } from './pages/help/HelpSearch';
+import { HelpLegalIndex } from './pages/help/HelpLegalIndex';
+import { HelpLegalDocument } from './pages/help/HelpLegalDocument';
 import { ContactPage } from './pages/ContactPage';
 import { RequesterPortal } from './pages/RequesterPortal';
 import {
@@ -27,8 +29,11 @@ import { AgentProfile } from './pages/app/AgentProfile';
 import { Overview } from './pages/app/Overview';
 import { Dashboard } from './pages/app/Dashboard';
 import { NotificationsPage } from './pages/app/NotificationsPage';
-import { KbAdminList } from './pages/admin/KbAdminList';
+import { KbFaqAdmin } from './pages/admin/KbFaqAdmin';
 import { KbArticleEditor } from './pages/admin/KbArticleEditor';
+import { KbCategoriesAdmin } from './pages/admin/KbCategoriesAdmin';
+import { KbLegalAdmin } from './pages/admin/KbLegalAdmin';
+import { KbLegalEditor } from './pages/admin/KbLegalEditor';
 import { AgentsAdmin } from './pages/admin/AgentsAdmin';
 import { TeamsAdmin } from './pages/admin/TeamsAdmin';
 import { RoutingAdmin } from './pages/admin/RoutingAdmin';
@@ -67,6 +72,8 @@ export const routes: RouteObject[] = [
       { path: 'help/search', element: <HelpSearch /> },
       { path: 'help/c/:category', element: <HelpCategory /> },
       { path: 'help/a/:slug', element: <HelpArticle /> },
+      { path: 'help/legal', element: <HelpLegalIndex /> },
+      { path: 'help/legal/:slug', element: <HelpLegalDocument /> },
       { path: 'contact', element: <ContactPage /> },
       { path: 't/:token', element: <RequesterPortal /> },
       { path: 'validation', element: <Validation /> },
@@ -101,12 +108,29 @@ export const routes: RouteObject[] = [
     element: <AppLayout />,
     children: [
       { index: true, element: <Navigate to="/admin/kb" replace /> },
+      // The KB splits at the top by content type: operational FAQ content and
+      // legal documents are managed independently (M20).
       {
         path: 'kb',
         children: [
-          { index: true, element: guard(KB_ROLES, <KbAdminList />) },
-          { path: 'new', element: guard(KB_ROLES, <KbArticleEditor />) },
-          { path: ':id', element: guard(KB_ROLES, <KbArticleEditor />) },
+          { index: true, element: <Navigate to="/admin/kb/faqs" replace /> },
+          {
+            path: 'faqs',
+            children: [
+              { index: true, element: guard(KB_ROLES, <KbFaqAdmin />) },
+              { path: 'categories', element: guard(KB_ROLES, <KbCategoriesAdmin />) },
+              { path: 'new', element: guard(KB_ROLES, <KbArticleEditor />) },
+              { path: ':id', element: guard(KB_ROLES, <KbArticleEditor />) },
+            ],
+          },
+          {
+            path: 'legal',
+            children: [
+              { index: true, element: guard(KB_ROLES, <KbLegalAdmin />) },
+              { path: 'new', element: guard(KB_ROLES, <KbLegalEditor />) },
+              { path: ':id', element: guard(KB_ROLES, <KbLegalEditor />) },
+            ],
+          },
         ],
       },
       { path: 'agents', element: guard(ADMIN_ROLES, <AgentsAdmin />) },

@@ -1,4 +1,6 @@
 import { useCallback } from 'react';
+import { Link } from 'react-router';
+import { IconArrowRight, IconGavel } from '@tabler/icons-react';
 import { listFeaturedArticles, listTopLevelCategories } from '../../services/kbService';
 import { useQuery } from '../../hooks/useQuery';
 import { ArticleCard } from '../../components/help/ArticleCard';
@@ -52,6 +54,30 @@ export function HelpHome() {
             ))}
           </div>
         )}
+      </section>
+
+      <section>
+        <Link
+          to="/help/legal"
+          className="group flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <IconGavel size={22} />
+          </span>
+          <span className="flex flex-col">
+            <span className="font-semibold text-foreground group-hover:text-primary">
+              Terms of Service & Policies
+            </span>
+            <span className="text-sm text-muted-foreground">
+              Read our General Terms of Service and the annexes that form part of them.
+            </span>
+          </span>
+          <IconArrowRight
+            size={18}
+            aria-hidden="true"
+            className="ml-auto shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+          />
+        </Link>
       </section>
     </div>
   );

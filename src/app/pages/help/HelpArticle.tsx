@@ -8,8 +8,8 @@ import {
 } from '../../services/kbService';
 import { useQuery } from '../../hooks/useQuery';
 import { formatDate } from '../../lib/utils';
-import { ArticleBody } from '../../components/help/ArticleBody';
 import { ArticleCard } from '../../components/help/ArticleCard';
+import { RichTextContent } from '../../components/help/RichTextContent';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { Separator } from '../../components/ui/Separator';
 import { BackToHelpLink, EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
@@ -66,7 +66,7 @@ export function HelpArticle() {
       </header>
 
       <Separator />
-      <ArticleBody body={art.body} />
+      <RichTextContent body={art.body} />
 
       {(related.data?.length ?? 0) > 0 && (
         <>

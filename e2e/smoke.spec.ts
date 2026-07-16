@@ -51,6 +51,13 @@ const ROUTES: { name: string; path: string; identity: string; expect: RegExp }[]
   { name: 'quality-reviews', path: '/app/reviews', identity: 'team_lead', expect: /quality reviews/i },
   { name: 'audit-log', path: '/admin/audit', identity: 'admin', expect: /audit log/i },
   { name: 'contact', path: '/contact', identity: 'guest', expect: /submit a ticket|contact/i },
+  { name: 'help-home', path: '/help', identity: 'guest', expect: /how can we help/i },
+  { name: 'help-legal-index', path: '/help/legal', identity: 'guest', expect: /terms of service & policies/i },
+  { name: 'help-legal-doc', path: '/help/legal/general-terms-of-service', identity: 'guest', expect: /general terms of service/i },
+  { name: 'kb-admin-faqs', path: '/admin/kb/faqs', identity: 'kb_editor', expect: /knowledge base/i },
+  { name: 'kb-admin-legal', path: '/admin/kb/legal', identity: 'kb_editor', expect: /knowledge base/i },
+  { name: 'kb-admin-categories', path: '/admin/kb/faqs/categories', identity: 'kb_editor', expect: /faq categories/i },
+  { name: 'kb-admin-editor', path: '/admin/kb/faqs/art-book', identity: 'kb_editor', expect: /edit faq/i },
 ];
 
 for (const route of ROUTES) {
