@@ -9,11 +9,15 @@ import { formatDate, formatDateTime } from '../../lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import { AgentConversation } from '../ticket/AgentConversation';
+import { ChatThread } from '../ticket/ChatThread';
 import { LinkedOrderPanel } from '../ticket/LinkedOrderPanel';
 import { TransactionPanel } from '../ticket/TransactionPanel';
 import { StatusChip } from '../ticket/StatusChip';
 import { ConcernTypeBadge, EscalationIndicator, PriorityBadge, SlaBadge } from '../ticket/badges';
+import type { PendingReply } from '../../hooks/useTicketRealtime';
+
+// Review evidence is read-only: there are never optimistic sends to render.
+const NO_PENDING: PendingReply[] = [];
 
 /**
  * Read-only ticket evidence for the review workspace. The conversation is the
@@ -58,7 +62,10 @@ export function EvidencePane({
       <Card>
         <CardHeader><CardTitle>Conversation</CardTitle></CardHeader>
         <CardContent>
-          <AgentConversation messages={messages} notes={notes} />
+          {/* Same zigzag thread as ticket-detail — requester left, agent right,
+              system centered, internal notes distinct. Read-only here: no pending
+              sends and no retry, so the review can never alter the handling. */}
+          <ChatThread messages={messages} notes={notes} pending={NO_PENDING} requesterName={requester.name} />
         </CardContent>
       </Card>
 

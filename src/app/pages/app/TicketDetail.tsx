@@ -84,9 +84,13 @@ export function TicketDetail() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // On xl the page fills the content area below the app shell (header h-14 =
+    // 3.5rem + main's p-6 top/bottom = 3rem ⇒ 6.5rem) and never scrolls itself;
+    // the three columns scroll independently instead. This keeps the conversation
+    // — and its pinned composer — inside the viewport without an arbitrary height.
+    <div className="flex flex-col gap-4 xl:h-[calc(100dvh-6.5rem)] xl:overflow-hidden">
       <Breadcrumb items={[{ label: 'My Queue', to: '/app/mine' }, { label: ticket.reference }]} />
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 xl:shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{ticket.subject}</h1>
           <p className="text-sm text-muted-foreground">{ticket.reference}</p>
@@ -113,9 +117,10 @@ export function TicketDetail() {
       {/* Conversation-dominant layout: ~23% context · ~54% conversation · ~23%
           actions on desktop. Below xl the columns stack with the conversation
           FIRST and the side panels collapse into accordions. */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(240px,23%)_minmax(0,1fr)_minmax(240px,23%)]">
-        {/* Left: context (secondary — collapsible, and last on narrow screens). */}
-        <div className="order-2 flex min-w-0 flex-col gap-3 xl:order-none">
+      <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(240px,23%)_minmax(0,1fr)_minmax(240px,23%)]">
+        {/* Left: context (secondary — collapsible, and last on narrow screens).
+            On xl it fills the row height and scrolls independently. */}
+        <div className="order-2 flex min-w-0 flex-col gap-3 xl:order-none xl:h-full xl:min-h-0 xl:overflow-y-auto">
           <CollapsibleCard title="Requester" defaultOpen>
             <div className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-foreground">{requester.name}</span>
@@ -179,9 +184,11 @@ export function TicketDetail() {
         </div>
 
         {/* Center: the conversation — the dominant, elevated area. Its header stays
-            visible while history scrolls; the composer is pinned at the bottom. */}
-        <section className="order-1 flex min-w-0 flex-col xl:order-none">
-          <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-md ring-1 ring-black/5 dark:ring-white/5 xl:sticky xl:top-4 xl:h-[calc(100vh-6rem)]">
+            visible while history scrolls; the composer is pinned at the bottom. On
+            mobile the panel is bound to the viewport (100dvh minus the header/title
+            allowance) so the composer stays reachable; on xl it fills the row. */}
+        <section className="order-1 flex min-w-0 flex-col xl:order-none xl:h-full xl:min-h-0">
+          <div className="flex h-[calc(100dvh-9rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-md ring-1 ring-black/5 dark:ring-white/5 xl:h-full xl:min-h-0">
             <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
               <h2 className="font-semibold text-foreground">Conversation</h2>
               {realtimeSupported && <ConnectionBadge status={rt.connection} />}
@@ -206,8 +213,8 @@ export function TicketDetail() {
           </div>
         </section>
 
-        {/* Right: actions (secondary). */}
-        <div className="order-3 flex min-w-0 flex-col gap-3 xl:order-none">
+        {/* Right: actions (secondary). Fills the row and scrolls independently on xl. */}
+        <div className="order-3 flex min-w-0 flex-col gap-3 xl:order-none xl:h-full xl:min-h-0 xl:overflow-y-auto">
           <Card>
             <CardHeader><CardTitle>Resolve</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-3">
