@@ -65,7 +65,7 @@ export function EvidencePane({
           {/* Same zigzag thread as ticket-detail — requester left, agent right,
               system centered, internal notes distinct. Read-only here: no pending
               sends and no retry, so the review can never alter the handling. */}
-          <ChatThread messages={messages} notes={notes} pending={NO_PENDING} requesterName={requester.name} />
+          <ChatThread ticketId={ticket.id} messages={messages} notes={notes} pending={NO_PENDING} requesterName={requester.name} />
         </CardContent>
       </Card>
 

@@ -17,11 +17,58 @@ import * as audit from './audit.ts';
 import * as customer from './customer.ts';
 import * as reviews from './reviews.ts';
 import { attachRealtime, mintAgentToken, mintCustomerToken } from './realtime.ts';
-import { setDown } from './store.ts';
+import { getStore, setDown } from './store.ts';
+import { parseMultipart, type MultipartFile } from './multipart.ts';
+import {
+  AttachmentValidationError,
+  downloadHeaders,
+  getAttachmentForTicket,
+  listTicketAttachments,
+  validateUploads,
+  type UploadFile,
+} from './attachments.ts';
+import { isVisibleToRequester } from './visibility.ts';
 
 type Params = Record<string, string>;
 type Query = URLSearchParams;
 type Handler = (req: IncomingMessage, params: Params, query: Query, storeId: string) => Promise<unknown>;
+
+/**
+ * A raw binary response (attachment downloads). Handlers return this instead of a
+ * JSON value; the router writes the bytes + headers verbatim. `__raw` tags it so
+ * the JSON path never touches a file body.
+ */
+interface RawResponse {
+  __raw: true;
+  status: number;
+  headers: Record<string, string>;
+  body: Buffer;
+}
+const isRawResponse = (value: unknown): value is RawResponse =>
+  !!value && typeof value === 'object' && (value as RawResponse).__raw === true;
+
+/** Whether a request carries a multipart/form-data body (an upload). */
+const isMultipart = (req: IncomingMessage): boolean =>
+  /multipart\/form-data/i.test(req.headers['content-type'] ?? '');
+
+/** Turn parsed multipart file parts (field "files") into validated upload inputs. */
+function filesToUploads(files: MultipartFile[]): UploadFile[] {
+  return files
+    .filter((f) => f.field === 'files')
+    .map((f) => ({ filename: f.filename, contentType: f.contentType, data: f.data }));
+}
+
+/**
+ * Ticket-level authorization for the customer attachment routes: the requester
+ * (identity from the query) must be allowed to SEE the ticket, exactly like the
+ * customer ticket reads. Throws "not found" otherwise — a requester learns nothing
+ * about a ticket that isn't theirs, and can't fetch its files by guessing an id.
+ */
+function requireCustomerTicketVisible(storeId: string, ticketId: string, q: Query): void {
+  const identity = { externalUserId: q.get('externalUserId') ?? '', externalOrgId: q.get('externalOrgId') ?? '' };
+  const ticket = getStore(storeId).tickets.find((t) => t.id === ticketId);
+  if (!ticket || !isVisibleToRequester(ticket, identity)) throw new Error('Ticket not found');
+}
 
 /**
  * Who a route is for. `public` routes are the CUSTOMER surface (GGX Business+):
@@ -191,8 +238,17 @@ const routes: Route[] = [
   },
   {
     // Requester reply — the same action HeyQ's portal performs. Customer-facing.
+    // Accepts multipart (a reply WITH file attachments) or JSON (text only /
+    // legacy metadata). Files are validated BEFORE the message is created, so a
+    // rejected batch never produces a message that references a missing upload.
     method: 'POST', pattern: '/tickets/:id/messages',
     handler: async (req, p, _q, storeId) => {
+      if (isMultipart(req)) {
+        const { fields, files } = await parseMultipart(req);
+        const uploads = filesToUploads(files);
+        if (uploads.length) validateUploads(uploads);
+        return tickets.addRequesterMessage(storeId, p.id, fields.body ?? '', undefined, uploads);
+      }
       const body = await readJsonBody(req);
       return tickets.addRequesterMessage(storeId, p.id, body.body, body.attachments);
     },
@@ -216,10 +272,36 @@ const routes: Route[] = [
     handler: async (req, p, _q, storeId) => tickets.resumeTicket(storeId, p.id, (await readJsonBody(req)).agentId),
   },
   {
+    // Agent public reply. Multipart (with attachments) or JSON (text/legacy).
     method: 'POST', pattern: '/tickets/:id/agent-reply',
     handler: async (req, p, _q, storeId) => {
+      if (isMultipart(req)) {
+        const { fields, files } = await parseMultipart(req);
+        const uploads = filesToUploads(files);
+        if (uploads.length) validateUploads(uploads);
+        return tickets.addAgentReply(storeId, p.id, fields.agentId ?? '', fields.body ?? '', undefined, uploads);
+      }
       const body = await readJsonBody(req);
       return tickets.addAgentReply(storeId, p.id, body.agentId, body.body, body.attachments);
+    },
+  },
+  // ── Ticket attachments (agent surface) ─────────────────────────────────────
+  {
+    // Consolidated attachment list for a ticket (agent/internal).
+    method: 'GET', pattern: '/tickets/:id/attachments',
+    handler: async (_req, p, _q, storeId) => listTicketAttachments(storeId, p.id),
+  },
+  {
+    // Authorized download/preview (agent/internal). `?disposition=inline` renders
+    // images/PDFs inline; everything else is served as an attachment.
+    method: 'GET', pattern: '/tickets/:id/attachments/:attachmentId',
+    handler: async (_req, p, q, storeId): Promise<RawResponse> => {
+      const store = getStore(storeId);
+      if (!store.tickets.find((t) => t.id === p.id)) throw new Error('Ticket not found');
+      const resolved = getAttachmentForTicket(storeId, p.id, p.attachmentId);
+      if (!resolved) throw new Error('Attachment not found');
+      const wantInline = q.get('disposition') === 'inline';
+      return { __raw: true, status: 200, headers: downloadHeaders(resolved.record, wantInline), body: resolved.bytes };
     },
   },
   {
@@ -447,19 +529,53 @@ const routes: Route[] = [
   {
     // Ticket creation from the embedded Business+ report drawer. Returns the
     // customer projection only. Identity + linked order are trusted (Business+
-    // owns OMS authorization).
+    // owns OMS authorization). Multipart carries creation-time attachments (files
+    // validated BEFORE the ticket is created — an invalid batch never half-creates).
     method: 'POST', pattern: '/customer/tickets',
     handler: async (req, _p, _q, storeId) => {
-      const b = await readJsonBody(req);
+      let b: Record<string, unknown>;
+      let uploads: UploadFile[] = [];
+      if (isMultipart(req)) {
+        const { fields, files } = await parseMultipart(req);
+        uploads = filesToUploads(files);
+        if (uploads.length) validateUploads(uploads);
+        b = { ...fields, linkedOrder: fields.linkedOrder ? JSON.parse(fields.linkedOrder) : undefined };
+      } else {
+        b = await readJsonBody(req);
+      }
       return customer.createCustomerTicket(storeId, {
-        identity: { externalUserId: b.externalUserId ?? '', externalOrgId: b.externalOrgId ?? '' },
-        name: b.name ?? '',
-        email: b.email ?? '',
-        concernType: b.concernType ?? undefined,
-        subject: b.subject ?? '',
-        description: b.description ?? '',
-        linkedOrder: b.linkedOrder ?? undefined,
+        identity: { externalUserId: (b.externalUserId as string) ?? '', externalOrgId: (b.externalOrgId as string) ?? '' },
+        name: (b.name as string) ?? '',
+        email: (b.email as string) ?? '',
+        concernType: (b.concernType as never) ?? undefined,
+        subject: (b.subject as string) ?? '',
+        description: (b.description as string) ?? '',
+        linkedOrder: (b.linkedOrder as never) ?? undefined,
+        uploads: uploads.length ? uploads : undefined,
       });
+    },
+    access: 'public',
+  },
+  // ── Ticket attachments (customer surface — visibility-gated) ───────────────
+  {
+    // Consolidated attachment list, only if the ticket is visible to the requester.
+    method: 'GET', pattern: '/customer/tickets/:id/attachments',
+    handler: async (_req, p, q, storeId) => {
+      requireCustomerTicketVisible(storeId, p.id, q);
+      return listTicketAttachments(storeId, p.id);
+    },
+    access: 'public',
+  },
+  {
+    // Authorized customer download/preview. Ticket-level authorization first
+    // (visibility), then the attachment must belong to THAT ticket.
+    method: 'GET', pattern: '/customer/tickets/:id/attachments/:attachmentId',
+    handler: async (_req, p, q, storeId): Promise<RawResponse> => {
+      requireCustomerTicketVisible(storeId, p.id, q);
+      const resolved = getAttachmentForTicket(storeId, p.id, p.attachmentId);
+      if (!resolved) throw new Error('Attachment not found');
+      const wantInline = q.get('disposition') === 'inline';
+      return { __raw: true, status: 200, headers: downloadHeaders(resolved.record, wantInline), body: resolved.bytes };
     },
     access: 'public',
   },
@@ -510,9 +626,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
     try {
       const result = await route.handler(req, params, url.searchParams, storeId);
+      if (isRawResponse(result)) {
+        // Binary download — CORS headers were already applied above.
+        res.writeHead(result.status, result.headers);
+        res.end(result.body);
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result ?? null));
     } catch (err) {
+      // Attachment validation failures carry per-file detail so the client can
+      // label each rejected file; nothing was stored (validation is a pre-gate).
+      if (err instanceof AttachmentValidationError) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message, files: err.errors }));
+        return;
+      }
       const status = statusForError(err);
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));

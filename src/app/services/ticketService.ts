@@ -35,13 +35,14 @@ import type {
   MockAttachment,
   ResolutionType,
   Ticket,
+  TicketAttachment,
   TicketDetailView,
   TicketListItem,
   TicketMessage,
   TicketPriority,
   TicketStatus,
 } from '../models/ticket';
-import { ApiError, apiGet, apiPost, buildQuery } from '../lib/apiClient';
+import { ApiError, apiGet, apiPost, apiPostForm, apiUrl, buildQuery } from '../lib/apiClient';
 import type { OrderProviderIdentity } from './orderProvider';
 
 export interface CreateTicketInput {
@@ -175,6 +176,39 @@ export async function getTicketDetail(ticketId: string): Promise<TicketDetailVie
 
 export async function addAgentReply(ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<TicketMessage> {
   return apiPost<TicketMessage>(`/tickets/${ticketId}/agent-reply`, { agentId, body, attachments });
+}
+
+/**
+ * Agent public reply WITH file attachments — a multipart upload. The server
+ * validates every file and stores it atomically with the message, so the returned
+ * message already carries downloadable attachment metadata (with ids). If any file
+ * is rejected the whole call throws (ApiError) and no message is created.
+ */
+export async function addAgentReplyWithFiles(
+  ticketId: string,
+  agentId: string,
+  body: string,
+  files: File[],
+): Promise<TicketMessage> {
+  const form = new FormData();
+  form.append('agentId', agentId);
+  form.append('body', body);
+  for (const f of files) form.append('files', f, f.name);
+  return apiPostForm<TicketMessage>(`/tickets/${ticketId}/agent-reply`, form);
+}
+
+/** Consolidated attachment list for a ticket (agent surface). */
+export async function listTicketAttachments(ticketId: string): Promise<TicketAttachment[]> {
+  return apiGet<TicketAttachment[]>(`/tickets/${ticketId}/attachments`);
+}
+
+/**
+ * Direct URL to download or (for images/PDFs) preview an attachment on the agent
+ * surface. `inline` requests inline rendering; the server still forces a download
+ * for anything not safely previewable.
+ */
+export function ticketAttachmentUrl(ticketId: string, attachmentId: string, inline = false): string {
+  return apiUrl(`/tickets/${ticketId}/attachments/${attachmentId}${inline ? '?disposition=inline' : ''}`);
 }
 
 export async function addInternalNote(ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<InternalNote> {

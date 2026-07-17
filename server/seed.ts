@@ -23,6 +23,7 @@ import type {
   RequesterAccess,
   StatusEvent,
   Ticket,
+  TicketAttachment,
   TicketMessage,
 } from '../src/app/models/ticket.ts';
 import type { QualityReview } from '../src/app/models/review.ts';
@@ -51,6 +52,10 @@ export interface SeedState {
   assignments: Assignment[];
   escalations: Escalation[];
   requesterAccess: RequesterAccess[];
+  // Stored ticket attachment METADATA (bytes live in server/attachments.ts's
+  // object store, keyed by storedName — never cloned into this state). One record
+  // per uploaded file gives a ticket a duplicate-free consolidated list.
+  attachments: TicketAttachment[];
   // Quality reviews (Supervisor feature) — a lead's structured assessment of how
   // an agent handled a ticket. Kept in the same store because the workspace reads
   // ticket evidence and the review together; reviews never mutate ticket state.
@@ -777,6 +782,7 @@ function seed(): SeedState {
     assignments,
     escalations,
     requesterAccess,
+    attachments: [],
     qualityReviews,
     // Running reference counter, seeded past the demo tickets.
     referenceSeq: 107,

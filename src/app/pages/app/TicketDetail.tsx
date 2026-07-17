@@ -70,9 +70,9 @@ export function TicketDetail() {
   const { ticket, requester, teamName, categoryName, subcategoryName, assigneeName, timeline, sla } = view;
   const isClosedish = ticket.status === 'resolved' || ticket.status === 'closed';
 
-  async function onCompose(mode: 'reply' | 'note', body: string, attachments?: TicketMessage['attachments']) {
-    if (mode === 'reply') await rt.sendReply(body, attachments);
-    else await rt.sendNote(body, attachments);
+  async function onCompose(mode: 'reply' | 'note', body: string, files?: File[]) {
+    if (mode === 'reply') await rt.sendReply(body, files);
+    else await rt.sendNote(body, files);
     // Keep the status chip / SLA / first-response fresh even without a live event.
     refresh();
   }
@@ -195,6 +195,7 @@ export function TicketDetail() {
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3">
               <ChatThread
+                ticketId={ticket.id}
                 messages={rt.messages}
                 notes={rt.notes}
                 pending={rt.pending}
@@ -208,7 +209,7 @@ export function TicketDetail() {
                   <TypingDots /> {rt.typingLabel} is typing…
                 </p>
               )}
-              <TicketComposer onSubmit={onCompose} onTyping={rt.notifyTyping} />
+              <TicketComposer onSubmit={onCompose} onTyping={rt.notifyTyping} busy={rt.pending.some((p) => p.status === 'sending')} />
             </div>
           </div>
         </section>

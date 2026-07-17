@@ -82,6 +82,27 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+/** Absolute URL for an API path — used to build attachment download/preview links
+ * that the browser loads directly (e.g. an <img src> or a download <a href>). */
+export const apiUrl = (path: string): string => `${baseUrl()}/api${path}`;
+
+/**
+ * POST a multipart/form-data body (file uploads). The browser sets the
+ * `Content-Type` (with boundary) from the FormData itself, so we deliberately do
+ * NOT set it here. Errors carry the server's per-file detail when present.
+ */
+export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${baseUrl()}/api${path}`, { method: 'POST', body: form });
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  const data = isJson ? await res.json() : undefined;
+  if (!res.ok) {
+    const message =
+      data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : res.statusText;
+    throw new ApiError(message, res.status);
+  }
+  return data as T;
+}
+
 export const apiGet = <T>(path: string): Promise<T> => apiFetch<T>(path, { method: 'GET' });
 
 export const apiPost = <T>(path: string, body?: unknown): Promise<T> =>

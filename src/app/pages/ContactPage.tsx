@@ -7,7 +7,7 @@ import { getRequesterProfile } from '../services/requesterService';
 import { useQuery } from '../hooks/useQuery';
 import { useMutation } from '../hooks/useMutation';
 import { useIdentity } from '../contexts/IdentityContext';
-import { isTrackingNumber, type MockAttachment } from '../models/ticket';
+import { isTrackingNumber } from '../models/ticket';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Alert } from '../components/ui/Alert';
 import { Button, buttonVariants } from '../components/ui/Button';
@@ -29,7 +29,7 @@ interface FormState {
   description: string;
   trackingNumber: string;
   orderRef: string;
-  attachments: MockAttachment[];
+  attachments: File[];
 }
 
 const EMPTY: FormState = {
@@ -131,7 +131,7 @@ export function ContactPage() {
         description: form.description,
         trackingNumber: form.trackingNumber || undefined,
         orderRef: form.orderRef || undefined,
-        attachments: form.attachments,
+        attachments: form.attachments.map((f) => ({ name: f.name, size: f.size, type: f.type })),
         relatedTransactionId: tx?.id,
         requesterId,
         businessPlusOrder:

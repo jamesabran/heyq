@@ -27,9 +27,21 @@ export function getStore(id: string = DEFAULT_STORE): Store {
   return store;
 }
 
+/**
+ * Reset hooks let modules that keep side state OUTSIDE the seed (e.g. the
+ * attachment byte store) clean up when a store is reset, without store.ts having
+ * to import them (which would create a cycle).
+ */
+type ResetHook = (id: string) => void;
+const resetHooks: ResetHook[] = [];
+export function onStoreReset(hook: ResetHook): void {
+  resetHooks.push(hook);
+}
+
 /** Reset a store back to the seed. Used by tests and the demo reset endpoint. */
 export function resetStore(id: string = DEFAULT_STORE): void {
   stores.set(id, createSeedState());
+  for (const hook of resetHooks) hook(id);
 }
 
 /** Simulated outage, per store — exercises the client's degraded paths. */

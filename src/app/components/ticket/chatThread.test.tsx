@@ -26,7 +26,7 @@ describe('ChatThread', () => {
       { id: 'n1', ticketId: 't', agentId: 'l1_agent', agentName: 'Alex Cruz', body: 'Internal: escalating.', createdAt: '2026-07-15T01:05:00Z' },
     ];
 
-    render(<ChatThread messages={messages} notes={notes} pending={[]} requesterName="Nadia Cruz" />);
+    render(<ChatThread ticketId="t" messages={messages} notes={notes} pending={[]} requesterName="Nadia Cruz" />);
 
     expect(screen.getByText('Where is my parcel?')).toBeInTheDocument();
     expect(screen.getByText('Checking now.')).toBeInTheDocument();
@@ -48,7 +48,7 @@ describe('ChatThread', () => {
       { tempId: 'p1', kind: 'reply', body: 'Sending this…', status: 'sending', createdAt: '2026-07-15T01:06:00Z' },
       { tempId: 'p2', kind: 'reply', body: 'This one failed', status: 'failed', createdAt: '2026-07-15T01:07:00Z' },
     ];
-    render(<ChatThread messages={[]} notes={[]} pending={pending} onRetry={onRetry} />);
+    render(<ChatThread ticketId="t" messages={[]} notes={[]} pending={pending} onRetry={onRetry} />);
 
     expect(screen.getByText('Sending…')).toBeInTheDocument();
     expect(screen.getByText(/failed to send/i)).toBeInTheDocument();

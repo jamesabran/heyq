@@ -11,6 +11,7 @@
  */
 import { teams } from '../src/app/data/catalog.ts';
 import type { ConcernType, CustomerTicket, LinkedOrder } from '../src/app/models/ticket.ts';
+import type { UploadFile } from './attachments.ts';
 import { createTicket } from './tickets.ts';
 import type { OrderProviderIdentity } from './orderProvider.ts';
 import { getStore } from './store.ts';
@@ -62,6 +63,8 @@ export interface CreateCustomerTicketInput {
   description: string;
   /** Linked order, pre-authorized by Business+ (OMS owner). Optional. */
   linkedOrder?: LinkedOrder;
+  /** Validated files attached during ticket creation (already policy-checked). */
+  uploads?: UploadFile[];
 }
 
 /**
@@ -85,6 +88,7 @@ export async function createCustomerTicket(storeId: string, input: CreateCustome
     subject: input.subject,
     description: input.description,
     businessPlusContext: { identity: input.identity, linkedOrder: input.linkedOrder },
+    uploads: input.uploads,
   });
 
   return toCustomerTicket(ticket, getStore(storeId), teamNameOf);

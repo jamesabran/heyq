@@ -10,7 +10,6 @@ import {
   CONCERN_TYPES,
   CONCERN_TYPE_LABELS,
   type ConcernType,
-  type MockAttachment,
   type TicketPriority,
 } from '../../models/ticket';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -49,7 +48,7 @@ export function NewTicket() {
     subject: '', description: '', priority: 'normal' as TicketPriority,
     teamId: '', assigneeId: '', trackingNumber: '', internalNote: '',
   });
-  const [attachments, setAttachments] = useState<MockAttachment[]>([]);
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -94,7 +93,9 @@ export function NewTicket() {
       assigneeId: form.assigneeId || undefined,
       relatedTransactionId,
       internalNote: form.internalNote || undefined,
-      attachments,
+      // This agent form records attachment metadata only (no upload here); the
+      // real upload path is the ticket conversation composer.
+      attachments: attachments.map((f) => ({ name: f.name, size: f.size, type: f.type })),
     });
     navigate(`/app/tickets/${result.ticket.id}`);
   }

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { MockAttachment } from '../../models/ticket';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/Textarea';
@@ -8,23 +7,25 @@ import { AttachmentPicker } from './AttachmentPicker';
 type Mode = 'reply' | 'note';
 
 /**
- * Composer with a public-reply / internal-note toggle, attachment metadata, and
+ * Composer with a public-reply / internal-note toggle, real file attachments, and
  * live typing signals. `onTyping('start')` fires as the agent types (the caller
  * throttles it); `onTyping('stop')` fires on send, on clearing the input, on
  * blur, and on unmount (navigation away) — so a typing indicator can never strand.
+ * Files staged here are uploaded by the caller on send (public replies); the send
+ * button is disabled while an upload is in flight so nothing is half-sent.
  */
 export function TicketComposer({
   onSubmit,
   onTyping,
   busy,
 }: {
-  onSubmit: (mode: Mode, body: string, attachments?: MockAttachment[]) => Promise<void> | void;
+  onSubmit: (mode: Mode, body: string, files?: File[]) => Promise<void> | void;
   onTyping?: (state: 'start' | 'stop') => void;
   busy?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>('reply');
   const [body, setBody] = useState('');
-  const [attachments, setAttachments] = useState<MockAttachment[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
 
   // Always stop typing when the composer unmounts (navigation away / ticket switch).
   const typingRef = useRef(onTyping);
@@ -38,11 +39,11 @@ export function TicketComposer({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!body.trim()) return;
+    if (!body.trim() || busy) return;
     onTyping?.('stop');
-    await onSubmit(mode, body.trim(), attachments.length ? attachments : undefined);
+    await onSubmit(mode, body.trim(), files.length ? files : undefined);
     setBody('');
-    setAttachments([]);
+    setFiles([]);
   }
 
   return (
@@ -72,10 +73,12 @@ export function TicketComposer({
         placeholder={mode === 'reply' ? 'Reply to the requester…' : 'Add an internal note (never shown to the requester)…'}
         className={mode === 'note' ? 'border-amber-300 dark:border-amber-500/40' : undefined}
       />
-      <AttachmentPicker value={attachments} onChange={setAttachments} />
+      <AttachmentPicker value={files} onChange={setFiles} disabled={busy} />
       <div className="flex justify-end">
         <Button type="submit" disabled={busy || !body.trim()}>
-          {busy ? 'Saving…' : mode === 'reply' ? 'Send reply' : 'Add note'}
+          {busy
+            ? files.length ? 'Uploading…' : 'Saving…'
+            : mode === 'reply' ? 'Send reply' : 'Add note'}
         </Button>
       </div>
     </form>

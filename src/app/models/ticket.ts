@@ -438,10 +438,46 @@ export interface CustomerTicket {
   canReopen: boolean;
 }
 
+/**
+ * Attachment METADATA carried on a message/note payload. `id` is present for
+ * REAL uploaded attachments (server-stored; downloadable via the attachments
+ * endpoints) and absent for the legacy metadata-only path. Bytes are NEVER
+ * embedded here — only the reference metadata.
+ */
 export interface MockAttachment {
+  /** Stored-attachment id when this file was really uploaded; absent for metadata-only. */
+  id?: string;
   name: string;
   size: number;
   type: string;
+}
+
+/** Who attached a file. Mirrors message author roles. */
+export type AttachmentUploaderType = 'requester' | 'agent' | 'system';
+
+/**
+ * A stored ticket attachment — the server-owned metadata record for one uploaded
+ * file. The bytes live in the server's object store keyed by `storedName` (a safe,
+ * server-generated key — NEVER the original filename). Every attachment belongs to
+ * a ticket; `messageId` records which conversation message (or the initial
+ * description on creation) it was shared on, so the UI can show where it came from.
+ * One record per file means a ticket's consolidated list has no duplicates.
+ */
+export interface TicketAttachment {
+  id: string;
+  ticketId: string;
+  /** The message this file was attached to (creation description or a reply). */
+  messageId?: string;
+  uploaderType: AttachmentUploaderType;
+  /** Uploader id (requester id or agent id). */
+  uploaderId: string;
+  /** Original client filename (display + sanitized on download). */
+  originalName: string;
+  /** Safe server-generated object key — the storage path. Never the original name. */
+  storedName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
 }
 
 export type ResolutionType = 'solved' | 'duplicate' | 'no_response' | 'not_reproducible';

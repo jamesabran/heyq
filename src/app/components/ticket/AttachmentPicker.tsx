@@ -1,54 +1,63 @@
 import { useRef, useState } from 'react';
 import { IconPaperclip, IconX } from '@tabler/icons-react';
-import type { MockAttachment } from '../../models/ticket';
+import {
+  ALLOWED_EXTENSIONS,
+  MAX_FILES_PER_SUBMISSION,
+  formatBytes,
+  validateCandidate,
+} from '../../lib/attachmentPolicy';
 import { Button } from '../ui/Button';
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
-const ALLOWED = ['image/png', 'image/jpeg', 'image/gif', 'application/pdf'];
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /**
- * Collects attachment METADATA only (name/size/type) with client-side validation.
- * No upload or storage — the file bytes are never read or sent (mock MVP).
+ * Collects REAL files to upload, validated against the shared attachment policy
+ * (the same allowlist / size / count / double-extension rules the SERVER enforces
+ * — the `accept` attribute below is a convenience, never the security boundary).
+ * The parent uploads the bytes on send; this component only gathers + validates.
  */
 export function AttachmentPicker({
   value,
   onChange,
+  disabled,
 }: {
-  value: MockAttachment[];
-  onChange: (next: MockAttachment[]) => void;
+  value: File[];
+  onChange: (next: File[]) => void;
+  disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [error, setError] = useState<string>('');
+  const [errors, setErrors] = useState<string[]>([]);
 
-  function onPick(files: FileList | null) {
-    if (!files) return;
-    const accepted: MockAttachment[] = [];
-    let rejected = '';
-    for (const file of Array.from(files)) {
-      if (!ALLOWED.includes(file.type)) {
-        rejected = `${file.name}: unsupported type. Use PNG, JPG, GIF, or PDF.`;
-        continue;
-      }
-      if (file.size > MAX_BYTES) {
-        rejected = `${file.name}: too large (max 5 MB).`;
-        continue;
-      }
-      accepted.push({ name: file.name, size: file.size, type: file.type });
+  function onPick(fileList: FileList | null) {
+    if (!fileList) return;
+    const incoming = Array.from(fileList);
+    const accepted: File[] = [];
+    const nextErrors: string[] = [];
+
+    for (const file of incoming) {
+      const error = validateCandidate({ name: file.name, size: file.size, type: file.type });
+      if (error) { nextErrors.push(error); continue; }
+      // Reject a duplicate (same name+size) already staged.
+      if ([...value, ...accepted].some((f) => f.name === file.name && f.size === file.size)) continue;
+      accepted.push(file);
     }
-    setError(rejected);
+
+    const total = value.length + accepted.length;
+    if (total > MAX_FILES_PER_SUBMISSION) {
+      const room = Math.max(0, MAX_FILES_PER_SUBMISSION - value.length);
+      nextErrors.push(`You can attach at most ${MAX_FILES_PER_SUBMISSION} files.`);
+      accepted.splice(room); // keep only what fits
+    }
+
+    setErrors(nextErrors);
     if (accepted.length) onChange([...value, ...accepted]);
     if (inputRef.current) inputRef.current.value = '';
   }
 
   function remove(index: number) {
     onChange(value.filter((_, i) => i !== index));
+    setErrors([]);
   }
+
+  const accept = ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(',');
 
   return (
     <div className="flex flex-col gap-2">
@@ -56,22 +65,30 @@ export function AttachmentPicker({
         ref={inputRef}
         type="file"
         multiple
-        accept={ALLOWED.join(',')}
+        accept={accept}
         className="hidden"
         onChange={(e) => onPick(e.target.files)}
+        disabled={disabled || value.length >= MAX_FILES_PER_SUBMISSION}
       />
-      <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => inputRef.current?.click()}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        disabled={disabled || value.length >= MAX_FILES_PER_SUBMISSION}
+        onClick={() => inputRef.current?.click()}
+      >
         <IconPaperclip size={16} /> Add attachments
       </Button>
 
       {value.length > 0 && (
         <ul className="flex flex-col gap-1.5">
-          {value.map((a, i) => (
-            <li key={`${a.name}-${i}`} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-1.5 text-sm">
-              <span className="truncate text-foreground">{a.name}</span>
+          {value.map((f, i) => (
+            <li key={`${f.name}-${f.size}-${i}`} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-1.5 text-sm">
+              <span className="truncate text-foreground">{f.name}</span>
               <span className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{formatSize(a.size)}</span>
-                <button type="button" onClick={() => remove(i)} aria-label={`Remove ${a.name}`} className="text-muted-foreground hover:text-destructive">
+                <span className="text-xs text-muted-foreground">{formatBytes(f.size)}</span>
+                <button type="button" onClick={() => remove(i)} aria-label={`Remove ${f.name}`} className="text-muted-foreground hover:text-destructive" disabled={disabled}>
                   <IconX size={14} />
                 </button>
               </span>
@@ -79,7 +96,13 @@ export function AttachmentPicker({
           ))}
         </ul>
       )}
-      {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
+      {errors.length > 0 && (
+        <ul role="alert" className="flex flex-col gap-0.5">
+          {errors.map((e, i) => (
+            <li key={i} className="text-xs font-medium text-destructive">{e}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

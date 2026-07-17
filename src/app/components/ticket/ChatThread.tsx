@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import {
   IconAlertTriangle,
+  IconDownload,
   IconHeadset,
   IconLock,
   IconPaperclip,
@@ -10,6 +11,8 @@ import {
 import type { InternalNote, MockAttachment, TicketMessage } from '../../models/ticket';
 import type { PendingReply } from '../../hooks/useTicketRealtime';
 import { cn, formatDateTime } from '../../lib/utils';
+import { formatBytes, isPreviewable } from '../../lib/attachmentPolicy';
+import { ticketAttachmentUrl } from '../../services/ticketService';
 import { Badge } from '../ui/Badge';
 
 /**
@@ -28,12 +31,14 @@ type Item =
   | { kind: 'pending'; at: string; key: string; data: PendingReply };
 
 export function ChatThread({
+  ticketId,
   messages,
   notes,
   pending,
   requesterName,
   onRetry,
 }: {
+  ticketId: string;
   messages: TicketMessage[];
   notes: InternalNote[];
   pending: PendingReply[];
@@ -56,8 +61,8 @@ export function ChatThread({
         const startsGroup = i === 0 || senderKey(items[i - 1]) !== senderKey(item);
         return (
           <Fragment key={item.key}>
-            {item.kind === 'message' && <MessageRow message={item.data} requesterName={requesterName} showHeader={startsGroup} />}
-            {item.kind === 'note' && <NoteRow note={item.data} showHeader={startsGroup} />}
+            {item.kind === 'message' && <MessageRow ticketId={ticketId} message={item.data} requesterName={requesterName} showHeader={startsGroup} />}
+            {item.kind === 'note' && <NoteRow ticketId={ticketId} note={item.data} showHeader={startsGroup} />}
             {item.kind === 'pending' && <PendingRow pending={item.data} onRetry={onRetry} />}
           </Fragment>
         );
@@ -76,10 +81,12 @@ function senderKey(item: Item): string {
 // ── Public messages ──────────────────────────────────────────────────────────
 
 function MessageRow({
+  ticketId,
   message,
   requesterName,
   showHeader,
 }: {
+  ticketId: string;
   message: TicketMessage;
   requesterName?: string;
   showHeader: boolean;
@@ -120,7 +127,7 @@ function MessageRow({
           )}
         >
           <p className="whitespace-pre-wrap">{message.body}</p>
-          <Attachments attachments={message.attachments} />
+          <Attachments ticketId={ticketId} attachments={message.attachments} />
         </div>
         <time dateTime={message.createdAt} className="px-1 text-[11px] text-muted-foreground">
           {formatDateTime(message.createdAt)}
@@ -133,7 +140,7 @@ function MessageRow({
 
 // ── Internal notes (agent-only, full width, unmistakably distinct) ───────────
 
-function NoteRow({ note, showHeader }: { note: InternalNote; showHeader: boolean }) {
+function NoteRow({ ticketId, note, showHeader }: { ticketId: string; note: InternalNote; showHeader: boolean }) {
   return (
     <li className="my-0.5">
       <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
@@ -147,7 +154,7 @@ function NoteRow({ note, showHeader }: { note: InternalNote; showHeader: boolean
           </div>
         )}
         <p className="whitespace-pre-wrap text-sm text-amber-900 dark:text-amber-100">{note.body}</p>
-        <Attachments attachments={note.attachments} tone="note" />
+        <Attachments ticketId={ticketId} attachments={note.attachments} tone="note" />
       </div>
     </li>
   );
@@ -197,31 +204,60 @@ function PendingStatus({ pending, onRetry }: { pending: PendingReply; onRetry?: 
 
 // ── Attachments ──────────────────────────────────────────────────────────────
 
-function Attachments({ attachments, tone }: { attachments?: MockAttachment[]; tone?: 'note' }) {
+/**
+ * Attachment chips. A REAL uploaded attachment (it has an `id`) is a download
+ * link, with an inline thumbnail/preview for safely previewable images and PDFs;
+ * anything else gets a download action. Legacy metadata-only attachments (no id —
+ * older internal notes) render as static chips as before.
+ */
+function Attachments({ ticketId, attachments, tone }: { ticketId: string; attachments?: MockAttachment[]; tone?: 'note' }) {
   if (!attachments || attachments.length === 0) return null;
   return (
-    <ul className="mt-2 flex flex-col gap-1">
-      {attachments.map((a, i) => (
-        <li
-          key={i}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs',
-            tone === 'note'
-              ? 'border-amber-300 bg-amber-100/60 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100'
-              : 'border-border bg-muted/50 text-foreground',
-          )}
-        >
-          <IconPaperclip size={13} aria-hidden="true" className="shrink-0" />
-          <span className="truncate">{a.name}</span>
-          <span className="text-muted-foreground">{formatBytes(a.size)}</span>
-        </li>
-      ))}
+    <ul className="mt-2 flex flex-col gap-1.5">
+      {attachments.map((a, i) => {
+        const chip = cn(
+          'inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs',
+          tone === 'note'
+            ? 'border-amber-300 bg-amber-100/60 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100'
+            : 'border-border bg-muted/50 text-foreground',
+        );
+        if (!a.id) {
+          return (
+            <li key={i} className={chip}>
+              <IconPaperclip size={13} aria-hidden="true" className="shrink-0" />
+              <span className="truncate">{a.name}</span>
+              <span className="text-muted-foreground">{formatBytes(a.size)}</span>
+            </li>
+          );
+        }
+        const previewable = isPreviewable(a.type);
+        const isImage = a.type.startsWith('image/');
+        return (
+          <li key={a.id} className="flex flex-col gap-1">
+            <a href={ticketAttachmentUrl(ticketId, a.id)} download={a.name} className={cn(chip, 'hover:bg-accent')}>
+              <IconPaperclip size={13} aria-hidden="true" className="shrink-0" />
+              <span className="truncate">{a.name}</span>
+              <span className="text-muted-foreground">{formatBytes(a.size)}</span>
+              <IconDownload size={13} aria-hidden="true" className="shrink-0" />
+            </a>
+            {previewable && (
+              isImage ? (
+                <a href={ticketAttachmentUrl(ticketId, a.id, true)} target="_blank" rel="noreferrer" className="block w-fit">
+                  <img
+                    src={ticketAttachmentUrl(ticketId, a.id, true)}
+                    alt={a.name}
+                    className="max-h-40 max-w-[220px] rounded-md border border-border object-contain"
+                  />
+                </a>
+              ) : (
+                <a href={ticketAttachmentUrl(ticketId, a.id, true)} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline">
+                  Preview
+                </a>
+              )
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

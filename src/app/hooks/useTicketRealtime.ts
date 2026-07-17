@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { InternalNote, MockAttachment, TicketMessage } from '../models/ticket';
 import type { AgentMessageData, RealtimeEvent, TypingData } from '../models/realtime';
-import { addAgentReply, addInternalNote } from '../services/ticketService';
+import { addAgentReply, addAgentReplyWithFiles, addInternalNote } from '../services/ticketService';
 import { getAgentRealtimeToken } from '../services/realtimeService';
 import {
   openTicketChannel,
@@ -16,10 +16,17 @@ export interface PendingReply {
   tempId: string;
   kind: 'reply' | 'note';
   body: string;
+  /** Display metadata for the optimistic bubble. */
   attachments?: MockAttachment[];
+  /** Real files to (re)upload — replies upload bytes; notes stay metadata-only. */
+  files?: File[];
   status: 'sending' | 'failed';
   createdAt: string;
 }
+
+/** Optimistic display metadata for a staged file (no id until the server stores it). */
+const toMeta = (files?: File[]): MockAttachment[] | undefined =>
+  files?.length ? files.map((f) => ({ name: f.name, size: f.size, type: f.type })) : undefined;
 
 const byCreatedThenId = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
   a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
@@ -165,13 +172,18 @@ export function useTicketRealtime({ ticketId, agentId, baseMessages, baseNotes, 
   }, [baseNotes, overlayNote]);
 
   const runSend = useCallback(
-    async (kind: 'reply' | 'note', tempId: string, body: string, attachments?: MockAttachment[]) => {
+    async (kind: 'reply' | 'note', tempId: string, body: string, files?: File[]) => {
       try {
         if (kind === 'reply') {
-          const msg = await addAgentReply(ticketId, agentId, body, attachments);
+          // A reply with files is a real multipart upload (bytes stored + linked);
+          // a text-only reply stays the lean JSON path.
+          const msg = files?.length
+            ? await addAgentReplyWithFiles(ticketId, agentId, body, files)
+            : await addAgentReply(ticketId, agentId, body);
           setOverlayMsg((prev) => ({ ...prev, [msg.id]: msg }));
         } else {
-          const n = await addInternalNote(ticketId, agentId, body, attachments);
+          // Internal notes keep the metadata-only path (agent-only, never uploaded).
+          const n = await addInternalNote(ticketId, agentId, body, toMeta(files));
           setOverlayNote((prev) => ({ ...prev, [n.id]: n }));
         }
         setPending((p) => p.filter((x) => x.tempId !== tempId));
@@ -183,24 +195,24 @@ export function useTicketRealtime({ ticketId, agentId, baseMessages, baseNotes, 
   );
 
   const send = useCallback(
-    async (kind: 'reply' | 'note', body: string, attachments?: MockAttachment[]) => {
+    async (kind: 'reply' | 'note', body: string, files?: File[]) => {
       const tempId = makeId('tmp');
-      setPending((p) => [...p, { tempId, kind, body, attachments, status: 'sending', createdAt: new Date().toISOString() }]);
+      setPending((p) => [...p, { tempId, kind, body, files, attachments: toMeta(files), status: 'sending', createdAt: new Date().toISOString() }]);
       channelRef.current?.sendTyping('stop');
-      await runSend(kind, tempId, body, attachments);
+      await runSend(kind, tempId, body, files);
     },
     [runSend],
   );
 
-  const sendReply = useCallback((body: string, attachments?: MockAttachment[]) => send('reply', body, attachments), [send]);
-  const sendNote = useCallback((body: string, attachments?: MockAttachment[]) => send('note', body, attachments), [send]);
+  const sendReply = useCallback((body: string, files?: File[]) => send('reply', body, files), [send]);
+  const sendNote = useCallback((body: string, files?: File[]) => send('note', body, files), [send]);
 
   const retryPending = useCallback(
     (tempId: string) => {
       const item = pendingRef.current.find((x) => x.tempId === tempId);
       if (!item) return;
       setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, status: 'sending' } : x)));
-      runSend(item.kind, tempId, item.body, item.attachments);
+      runSend(item.kind, tempId, item.body, item.files);
     },
     [runSend],
   );

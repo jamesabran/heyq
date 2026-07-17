@@ -53,6 +53,7 @@ import {
 import { computeSlaSummary, isSlaAtRiskOrBreached } from '../src/app/services/slaService.ts';
 import { clone, makeId, nowIso, simulateLatency } from '../src/app/lib/mock.ts';
 import { emit } from './notifications.ts';
+import { persistUploads, toMessageAttachment, type UploadFile } from './attachments.ts';
 import { getAuthorizedOrder, type OrderProviderIdentity } from './orderProvider.ts';
 import {
   publishAssignmentChanged,
@@ -122,6 +123,13 @@ export interface CreateTicketInput {
     identity: OrderProviderIdentity;
     linkedOrder?: LinkedOrder;
   };
+  /**
+   * Validated file bytes attached at CREATION. Stored and linked to the initial
+   * description message so they appear in the ticket's consolidated attachment
+   * list with their originating message. Validation happens in the HTTP layer
+   * BEFORE this runs, so an invalid batch never half-creates a ticket.
+   */
+  uploads?: UploadFile[];
 }
 
 export interface CreateTicketResult {
@@ -262,11 +270,20 @@ export async function createTicket(storeId: string, input: CreateTicketInput): P
     { id: makeId('se'), ticketId: ticket.id, actor: 'system', fromStatus: 'new', toStatus: 'open', timestamp: now },
   );
 
+  const descriptionMessage: TicketMessage = {
+    id: makeId('msg'), ticketId: ticket.id, authorType: 'requester', authorId: requester.id,
+    authorName: requester.name, body: input.description.trim(), channel: 'web', visibility: 'public', createdAt: now,
+  };
+  // Creation-time attachments live on the initial description message, so the
+  // consolidated list shows them with the message they arrived on.
+  if (input.uploads?.length) {
+    const stored = persistUploads(storeId, {
+      ticketId: ticket.id, messageId: descriptionMessage.id, uploaderType: 'requester', uploaderId: requester.id, files: input.uploads,
+    });
+    descriptionMessage.attachments = stored.map(toMessageAttachment);
+  }
   store.ticketMessages.push(
-    {
-      id: makeId('msg'), ticketId: ticket.id, authorType: 'requester', authorId: requester.id,
-      authorName: requester.name, body: input.description.trim(), channel: 'web', visibility: 'public', createdAt: now,
-    },
+    descriptionMessage,
     {
       id: makeId('msg'), ticketId: ticket.id, authorType: 'system', authorId: 'system',
       authorName: 'HeyQ', body: `Ticket ${reference} received. We'll get back to you shortly.`,
@@ -434,8 +451,20 @@ function reopen(store: Store, ticket: Ticket, actor: string, note: string) {
 
 const isClosedOut = (t: Ticket) => t.status === 'resolved' || t.status === 'closed';
 
-/** Requester posts a public reply. A hold on them lifts; a closed-out ticket reopens. */
-export async function addRequesterMessage(storeId: string, ticketId: string, body: string, attachments?: MockAttachment[]): Promise<TicketMessage> {
+/**
+ * Requester posts a public reply. A hold on them lifts; a closed-out ticket
+ * reopens. `uploads` are already-validated file bytes (the HTTP layer validates
+ * BEFORE calling, so the message + its attachments are created together — never a
+ * message that references an upload that didn't store). `attachments` is the
+ * legacy metadata-only path, kept for callers that never send bytes.
+ */
+export async function addRequesterMessage(
+  storeId: string,
+  ticketId: string,
+  body: string,
+  attachments?: MockAttachment[],
+  uploads?: UploadFile[],
+): Promise<TicketMessage> {
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
@@ -450,6 +479,12 @@ export async function addRequesterMessage(storeId: string, ticketId: string, bod
     attachments: attachments?.length ? attachments : undefined,
     channel: 'web', visibility: 'public', createdAt: now,
   };
+  if (uploads?.length) {
+    const stored = persistUploads(storeId, {
+      ticketId, messageId: message.id, uploaderType: 'requester', uploaderId: ticket.requesterId, files: uploads,
+    });
+    message.attachments = stored.map(toMessageAttachment);
+  }
   store.ticketMessages.push(message);
   ticket.updatedAt = now;
 
@@ -691,8 +726,19 @@ export async function getTicketDetail(storeId: string, ticketId: string): Promis
   });
 }
 
-/** Agent posts a public reply. Sets first-response and moves New/Open into progress. */
-export async function addAgentReply(storeId: string, ticketId: string, agentId: string, body: string, attachments?: MockAttachment[]): Promise<TicketMessage> {
+/**
+ * Agent posts a public reply. Sets first-response and moves New/Open into
+ * progress. `uploads` (validated file bytes) are stored and linked to this
+ * message atomically; `attachments` remains the legacy metadata-only path.
+ */
+export async function addAgentReply(
+  storeId: string,
+  ticketId: string,
+  agentId: string,
+  body: string,
+  attachments?: MockAttachment[],
+  uploads?: UploadFile[],
+): Promise<TicketMessage> {
   await simulateLatency();
   const store = getStore(storeId);
   const ticket = store.tickets.find((t) => t.id === ticketId);
@@ -706,6 +752,12 @@ export async function addAgentReply(storeId: string, ticketId: string, agentId: 
     attachments: attachments?.length ? attachments : undefined,
     channel: 'web', visibility: 'public', createdAt: now,
   };
+  if (uploads?.length) {
+    const stored = persistUploads(storeId, {
+      ticketId, messageId: message.id, uploaderType: 'agent', uploaderId: agentId, files: uploads,
+    });
+    message.attachments = stored.map(toMessageAttachment);
+  }
   store.ticketMessages.push(message);
   ticket.updatedAt = now;
   if (!ticket.firstResponseAt) ticket.firstResponseAt = now;
