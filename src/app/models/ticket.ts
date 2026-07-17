@@ -157,7 +157,21 @@ export interface Ticket {
   // M22 — which external system originated the ticket, and the order it links.
   // Both optional: manual / non-GGX flows are unchanged.
   sourceSystem?: ExternalSourceSystem;
+  /**
+   * Single linked order (LEGACY / primary). Retained for backward compatibility:
+   * pre-existing single-transaction tickets carry only this, and it always mirrors
+   * the FIRST entry of `linkedTransactions` when that collection is present, so
+   * every reader of `linkedOrder` keeps working unchanged.
+   */
   linkedOrder?: LinkedOrder;
+  /**
+   * M26 — one ticket may reference MANY transactions (Business+ multi-select report).
+   * Order is meaningful: the first entry is the primary/originating transaction
+   * (e.g. the one a Transaction Details report started from) and is what
+   * `linkedOrder` mirrors. Absent on tickets with no linked order; a one-element
+   * array on single-transaction tickets created through the new path.
+   */
+  linkedTransactions?: LinkedOrder[];
   slaPolicyId: string;
   createdAt: string;
   updatedAt: string;
@@ -393,6 +407,20 @@ export interface LinkedOrder {
   capturedAt: string;
 }
 
+/**
+ * The linked transactions of a ticket as a normalized array, regardless of which
+ * era created it: the new `linkedTransactions` collection when present, otherwise
+ * the legacy single `linkedOrder` (one element), otherwise empty. One accessor so
+ * every surface — agent panel, list search, customer projection — reads the same
+ * thing and single/multi tickets are handled identically.
+ */
+export function linkedOrdersOf(
+  source: { linkedOrder?: LinkedOrder; linkedTransactions?: LinkedOrder[] },
+): LinkedOrder[] {
+  if (source.linkedTransactions?.length) return source.linkedTransactions;
+  return source.linkedOrder ? [source.linkedOrder] : [];
+}
+
 // ── Customer projection (M23) ────────────────────────────────────────────────
 // What the server returns to a CUSTOMER client (GGX Business+). This type IS the
 // privacy boundary: it has no field for internal notes, assignee identity,
@@ -433,7 +461,10 @@ export interface CustomerTicket {
    * The customer app must label it as such and never present it as self-submitted.
    */
   openedBySupport: boolean;
+  /** Primary/first linked order — legacy mirror of `linkedTransactions[0]`. */
   linkedOrder?: LinkedOrder;
+  /** All linked transactions (primary first). Absent when nothing is linked. */
+  linkedTransactions?: LinkedOrder[];
   messages: CustomerTicketMessage[];
   canReopen: boolean;
 }
@@ -512,8 +543,12 @@ export interface TicketListItem {
   teamName: string;
   categoryName: string;
   assigneeName?: string;
-  /** Denormalized from the linked GGX transaction; absent on non-shipment tickets. */
+  /** Denormalized from the linked GGX transaction; absent on non-shipment tickets.
+   *  On multi-transaction tickets this is the PRIMARY (first) tracking number. */
   trackingNumber?: string;
+  /** Every linked tracking number (primary first). Drives the "+N more" hint and
+   *  keeps all of them recognizable in the list even though only the first shows. */
+  trackingNumbers?: string[];
   sla: SlaSummary;
 }
 

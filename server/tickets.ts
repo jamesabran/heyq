@@ -33,6 +33,7 @@ import {
   ESCALATION_REASON_LABELS,
   HOLD_REASON_LABELS,
   STATUS_LABELS,
+  linkedOrdersOf,
   type ConcernType,
   type EscalationReason,
   type ExternalSourceSystem,
@@ -121,7 +122,16 @@ export interface CreateTicketInput {
    */
   businessPlusContext?: {
     identity: OrderProviderIdentity;
+    /** Legacy single linked order. Prefer `linkedTransactions`. */
     linkedOrder?: LinkedOrder;
+    /**
+     * One ticket, MANY authorized transactions (multi-select report). Business+
+     * owns OMS authorization and has already checked every entry, so the list is
+     * taken as given. Primary/originating transaction first — that ordering is
+     * preserved end to end (it is what agents see first). An empty/absent list is
+     * a general, unlinked ticket.
+     */
+    linkedTransactions?: LinkedOrder[];
   };
   /**
    * Validated file bytes attached at CREATION. Stored and linked to the initial
@@ -166,6 +176,7 @@ export async function createTicket(storeId: string, input: CreateTicketInput): P
   // unresolvable link must fail the whole submission, never half-create a ticket.
   let sourceSystem: ExternalSourceSystem | undefined;
   let linkedOrder: LinkedOrder | undefined;
+  let linkedTransactions: LinkedOrder[] | undefined;
   // M23 — provenance/visibility: a linked Business+ order means a signed-in
   // Business+ requester submitted this; otherwise it's an anonymous HeyQ-web
   // submission with no customer app to be visible in.
@@ -199,6 +210,8 @@ export async function createTicket(storeId: string, input: CreateTicketInput): P
         destination: res.order.destination,
       },
     };
+    // Keep the collection consistent with the single-order picker path.
+    linkedTransactions = [linkedOrder];
     provenance = {
       creatorType: 'requester',
       sourceChannel: 'business_plus',
@@ -208,11 +221,21 @@ export async function createTicket(storeId: string, input: CreateTicketInput): P
       customerNotified: true,
     };
   } else if (input.businessPlusContext) {
-    // Trusted embedded-app path: Business+ already authorized the order via OMS.
+    // Trusted embedded-app path: Business+ already authorized every order via OMS.
     const ctx = input.businessPlusContext;
-    if (ctx.linkedOrder) {
+    // Normalize both shapes to one array: the explicit multi-select collection, or
+    // the legacy single order as a one-element list. Order is preserved (primary
+    // first) and capturedAt is defaulted per entry.
+    const provided = ctx.linkedTransactions?.length
+      ? ctx.linkedTransactions
+      : ctx.linkedOrder
+        ? [ctx.linkedOrder]
+        : [];
+    if (provided.length) {
       sourceSystem = 'ggx_business_plus';
-      linkedOrder = { ...ctx.linkedOrder, capturedAt: ctx.linkedOrder.capturedAt || now };
+      linkedTransactions = provided.map((o) => ({ ...o, capturedAt: o.capturedAt || now }));
+      // linkedOrder mirrors the primary transaction for every legacy reader.
+      linkedOrder = linkedTransactions[0];
     }
     provenance = {
       creatorType: 'requester',
@@ -259,6 +282,7 @@ export async function createTicket(storeId: string, input: CreateTicketInput): P
     relatedTransactionId: input.relatedTransactionId,
     sourceSystem,
     linkedOrder,
+    linkedTransactions,
     slaPolicyId: 'sla-standard',
     createdAt: now,
     updatedAt: now,
@@ -568,24 +592,33 @@ export interface ListTicketsParams {
 }
 
 /**
- * The GGX tracking number for a ticket: from its Business+ linked-order snapshot
- * first (self-sufficient even when the provider is down), then the M13 linked
- * transaction. Exported so requester-facing lists resolve it identically.
+ * Every GGX tracking number linked to a ticket, primary first: from its Business+
+ * linked transactions (self-sufficient even when the provider is down), else the
+ * M13 linked transaction. Exported so requester-facing lists resolve them identically.
  */
-export const trackingNumberFor = (ticket: Ticket): string | undefined =>
-  ticket.linkedOrder?.trackingNumber ??
-  (ticket.relatedTransactionId
+export const trackingNumbersFor = (ticket: Ticket): string[] => {
+  const linked = linkedOrdersOf(ticket).map((o) => o.trackingNumber);
+  if (linked.length) return linked;
+  const related = ticket.relatedTransactionId
     ? relatedTransactions.find((t) => t.id === ticket.relatedTransactionId)?.trackingNumber
-    : undefined);
+    : undefined;
+  return related ? [related] : [];
+};
+
+/** The PRIMARY tracking number (first linked transaction), or undefined. */
+export const trackingNumberFor = (ticket: Ticket): string | undefined =>
+  trackingNumbersFor(ticket)[0];
 
 function toListItem(store: Store, ticket: Ticket): TicketListItem {
+  const trackingNumbers = trackingNumbersFor(ticket);
   return {
     ticket: clone(ticket),
     requesterName: requesterName(store, ticket.requesterId),
     teamName: teamName(ticket.teamId),
     categoryName: categoryName(ticket.categoryId),
     assigneeName: agentName(ticket.assigneeId),
-    trackingNumber: trackingNumberFor(ticket),
+    trackingNumber: trackingNumbers[0],
+    trackingNumbers: trackingNumbers.length ? trackingNumbers : undefined,
     sla: computeSlaSummary(ticket),
   };
 }
@@ -600,7 +633,9 @@ function searchCorpus(store: Store, ticket: Ticket): string {
   const requester = store.requesters.find((r) => r.id === ticket.requesterId);
   return [
     ticket.reference,
-    trackingNumberFor(ticket),
+    // EVERY linked tracking number is searchable, not just the primary — an agent
+    // reading any one of a multi-transaction ticket's numbers off a chat still hits it.
+    ...trackingNumbersFor(ticket),
     ticket.concernType ? CONCERN_TYPE_LABELS[ticket.concernType] : undefined,
     ticket.subject,
     requester?.name,

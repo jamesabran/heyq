@@ -110,7 +110,7 @@ function TicketRow({
   transaction?: RowTransactionContext;
   showTransaction: boolean;
 }) {
-  const { ticket, requesterName, teamName, assigneeName, trackingNumber, sla } = item;
+  const { ticket, requesterName, teamName, assigneeName, trackingNumber, trackingNumbers, sla } = item;
   const navigate = useNavigate();
 
   // The whole row opens the ticket, not just the reference link — but a click
@@ -142,7 +142,7 @@ function TicketRow({
       </td>
 
       <td className="hidden whitespace-nowrap px-3 py-2.5 align-top md:table-cell">
-        <TrackingNumber value={trackingNumber} />
+        <TrackingNumber value={trackingNumber} values={trackingNumbers} />
       </td>
 
       <td className="hidden px-3 py-2.5 align-top md:table-cell">
@@ -211,7 +211,30 @@ function TicketRow({
 }
 
 /** A GGX tracking number, or an em dash for a ticket with no shipment. */
-function TrackingNumber({ value, className }: { value?: string; className?: string }) {
-  if (!value) return <span className="text-muted-foreground">—</span>;
-  return <span className={cn('font-mono text-xs text-foreground', className)}>{value}</span>;
+/**
+ * Tracking number for a list row. A single linked transaction shows its number;
+ * multiple show the FIRST plus a compact "+N more" (every number stays searchable
+ * — this is display only). `values` (all numbers) wins when provided; `value`
+ * remains the single-number fallback.
+ */
+function TrackingNumber({
+  value,
+  values,
+  className,
+}: {
+  value?: string;
+  values?: string[];
+  className?: string;
+}) {
+  const list = values?.length ? values : value ? [value] : [];
+  if (list.length === 0) return <span className="text-muted-foreground">—</span>;
+  const extra = list.length - 1;
+  return (
+    <span className="inline-flex items-center gap-1.5" title={list.join(', ')}>
+      <span className={cn('font-mono text-xs text-foreground', className)}>{list[0]}</span>
+      {extra > 0 && (
+        <span className="whitespace-nowrap text-xs text-muted-foreground">+{extra} more</span>
+      )}
+    </span>
+  );
 }

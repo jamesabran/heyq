@@ -539,7 +539,11 @@ const routes: Route[] = [
         const { fields, files } = await parseMultipart(req);
         uploads = filesToUploads(files);
         if (uploads.length) validateUploads(uploads);
-        b = { ...fields, linkedOrder: fields.linkedOrder ? JSON.parse(fields.linkedOrder) : undefined };
+        b = {
+          ...fields,
+          linkedOrder: fields.linkedOrder ? JSON.parse(fields.linkedOrder) : undefined,
+          linkedTransactions: fields.linkedTransactions ? JSON.parse(fields.linkedTransactions) : undefined,
+        };
       } else {
         b = await readJsonBody(req);
       }
@@ -551,6 +555,7 @@ const routes: Route[] = [
         subject: (b.subject as string) ?? '',
         description: (b.description as string) ?? '',
         linkedOrder: (b.linkedOrder as never) ?? undefined,
+        linkedTransactions: (b.linkedTransactions as never) ?? undefined,
         uploads: uploads.length ? uploads : undefined,
       });
     },

@@ -25,6 +25,7 @@
  */
 import {
   CONCERN_TYPE_LABELS,
+  linkedOrdersOf,
   type CustomerTicket,
   type CustomerTicketMessage,
   type Ticket,
@@ -99,6 +100,12 @@ export function toCustomerTicket(
     reopenedAt: ticket.reopenedAt,
     openedBySupport: isOpenedBySupport(ticket),
     linkedOrder: ticket.linkedOrder,
+    // Normalized so the customer app gets the same array shape for single- and
+    // multi-transaction tickets (and legacy tickets carrying only linkedOrder).
+    linkedTransactions: (() => {
+      const linked = linkedOrdersOf(ticket);
+      return linked.length ? linked : undefined;
+    })(),
     messages,
     canReopen: ticket.status === 'resolved' || ticket.status === 'closed',
   };

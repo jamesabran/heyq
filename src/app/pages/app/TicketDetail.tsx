@@ -10,6 +10,7 @@ import {
   CONCERN_TYPE_LABELS,
   SOURCE_SYSTEM_LABELS,
   RESOLUTION_LABELS,
+  linkedOrdersOf,
   type InternalNote,
   type ResolutionType,
   type TicketMessage,
@@ -30,7 +31,7 @@ import { ChatThread } from '../../components/ticket/ChatThread';
 import { TicketComposer } from '../../components/ticket/TicketComposer';
 import { TicketActions } from '../../components/ticket/TicketActions';
 import { TransactionPanel } from '../../components/ticket/TransactionPanel';
-import { LinkedOrderPanel } from '../../components/ticket/LinkedOrderPanel';
+import { LinkedTransactionsPanel } from '../../components/ticket/LinkedTransactionsPanel';
 import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
 
 // Stable empty arrays so the realtime hook's base props keep identity while the
@@ -149,7 +150,7 @@ export function TicketDetail() {
             </div>
           </CollapsibleCard>
 
-          {ticket.linkedOrder && <LinkedOrderPanel order={ticket.linkedOrder} />}
+          <LinkedTransactionsPanel transactions={linkedOrdersOf(ticket)} />
 
           <TransactionPanel
             ticketId={ticket.id}

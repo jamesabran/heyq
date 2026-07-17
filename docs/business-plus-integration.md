@@ -48,6 +48,27 @@ Only reference data plus a snapshot (`LinkedOrder` in `models/ticket.ts`):
   sender/recipient summaries, destination
 - `capturedAt` — shown to agents so snapshot age is explicit
 
+### Many transactions per ticket (M26)
+
+One ticket may reference **many** transactions (the Business+ report drawer's
+multi-select). HeyQ stores them as `Ticket.linkedTransactions: LinkedOrder[]`
+(primary/originating first) and mirrors the first into the legacy `linkedOrder`,
+so every existing single-transaction reader keeps working. `linkedOrdersOf(ticket)`
+returns the normalized array for any era of ticket (multi, single, or legacy
+`linkedOrder`-only). Business+ owns OMS authorization and pre-authorizes every
+selected transaction, so the embedded-context path takes the list as given (only
+the minimum per-transaction snapshot is stored). Consequences:
+
+- **Customer projection** (`CustomerTicket`) returns `linkedTransactions` plus
+  `linkedOrder` (= the first).
+- **Agent list rows** carry `trackingNumbers` (all, primary first); the table shows
+  the first plus "+N more", and **every** linked tracking number is searchable
+  (`searchCorpus`). `trackingNumbersFor(ticket)` is the shared accessor.
+- **Agent detail** replaces the single Linked Order panel with a compact
+  `LinkedTransactionsPanel` (count heading, ≤3 rows tracking·status·origin→
+  destination, "View all", and a per-transaction modal reusing `LinkedOrderPanel`
+  for full details + the live-status check — one transaction at a time).
+
 ## What Business+ must provide (later)
 
 1. **Authenticated user + organization identity** for the requester session,

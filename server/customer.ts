@@ -61,8 +61,14 @@ export interface CreateCustomerTicketInput {
   concernType?: ConcernType;
   subject: string;
   description: string;
-  /** Linked order, pre-authorized by Business+ (OMS owner). Optional. */
+  /** Legacy single linked order, pre-authorized by Business+ (OMS owner). Optional. */
   linkedOrder?: LinkedOrder;
+  /**
+   * Linked transactions (multi-select report), each pre-authorized by Business+
+   * against OMS. Primary/originating transaction first. Optional — an absent/empty
+   * list is a general, unlinked ticket.
+   */
+  linkedTransactions?: LinkedOrder[];
   /** Validated files attached during ticket creation (already policy-checked). */
   uploads?: UploadFile[];
 }
@@ -87,7 +93,11 @@ export async function createCustomerTicket(storeId: string, input: CreateCustome
     concernType,
     subject: input.subject,
     description: input.description,
-    businessPlusContext: { identity: input.identity, linkedOrder: input.linkedOrder },
+    businessPlusContext: {
+      identity: input.identity,
+      linkedOrder: input.linkedOrder,
+      linkedTransactions: input.linkedTransactions,
+    },
     uploads: input.uploads,
   });
 

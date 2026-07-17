@@ -27,6 +27,7 @@
  *   POST /tickets/:id/link-transaction → linkTransaction
  */
 import { relatedTransactions } from '../data/catalog';
+import { linkedOrdersOf } from '../models/ticket';
 import type {
   ConcernType,
   EscalationReason,
@@ -154,11 +155,17 @@ export interface ListTicketsParams {
  * transaction. Pure/synchronous — `relatedTransactions` is reference data that
  * stays client-side (it isn't ticket state).
  */
-export const trackingNumberFor = (ticket: Ticket): string | undefined =>
-  ticket.linkedOrder?.trackingNumber ??
-  (ticket.relatedTransactionId
+export const trackingNumbersFor = (ticket: Ticket): string[] => {
+  const linked = linkedOrdersOf(ticket).map((o) => o.trackingNumber);
+  if (linked.length) return linked;
+  const related = ticket.relatedTransactionId
     ? relatedTransactions.find((t) => t.id === ticket.relatedTransactionId)?.trackingNumber
-    : undefined);
+    : undefined;
+  return related ? [related] : [];
+};
+
+export const trackingNumberFor = (ticket: Ticket): string | undefined =>
+  trackingNumbersFor(ticket)[0];
 
 export async function listTickets(params: ListTicketsParams = {}): Promise<TicketListItem[]> {
   const { reopened, ...rest } = params;
