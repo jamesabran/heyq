@@ -6,7 +6,7 @@
  * the threshold in force at the time, every failure mode falls back to requiring
  * a human, and none of it touches the manual review flow or the ticket.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decideSupervisorRequired, runAiReview } from './aiReview.ts';
 import {
   errorAiProvider,
@@ -17,6 +17,7 @@ import {
   __resetAiReviewProviderForTest,
   __setAiReviewProviderForTest,
 } from './aiReviewProvider.ts';
+import { huggingFaceAiProvider } from './aiReviewHuggingFace.ts';
 import { latestAiReviewForTicket, listReviewable, saveDraft, supervisorReviewForTicket } from './reviews.ts';
 import { getStore } from './store.ts';
 import { DEFAULT_REVIEW_CONFIG, FAKE_AI_MODEL } from './seed.ts';
@@ -42,6 +43,9 @@ const setThreshold = (percent: number) => {
 afterEach(() => {
   __resetAiReviewProviderForTest();
   getStore(S).reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
+  getStore(S).aiHealth = { consecutiveFailures: 0 };
+  vi.unstubAllGlobals();
+  delete process.env.HEYQ_HF_TOKEN;
 });
 
 describe('a successful run', () => {
@@ -300,5 +304,153 @@ describe('re-running', () => {
     expect(failed.score).toBeUndefined();
     expect(failed.responses).toEqual({});
     expect(failed.supervisorReviewRequired).toBe(true);
+  });
+});
+
+describe('AI reviewer health', () => {
+  it('records a success and clears any error state', async () => {
+    await runAiReview(S, 'tkt-seed-5');
+    const health = getStore(S).aiHealth;
+    expect(health.consecutiveFailures).toBe(0);
+    expect(health.lastSuccessAt).toEqual(expect.any(String));
+  });
+
+  it('counts consecutive failures and keeps the latest code', async () => {
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    await runAiReview(S, 'tkt-seed-5');
+    await runAiReview(S, 'tkt-seed-8');
+
+    const health = getStore(S).aiHealth;
+    expect(health.consecutiveFailures).toBe(2);
+    expect(health.lastErrorCode).toBe('unavailable');
+    expect(health.lastErrorAt).toEqual(expect.any(String));
+  });
+
+  it('counts unusable OUTPUT as a failure too', async () => {
+    // A model that reliably returns garbage is as broken as one that is down.
+    __setAiReviewProviderForTest(rawAiProvider('not json at all'));
+    await runAiReview(S, 'tkt-seed-5');
+    expect(getStore(S).aiHealth.lastErrorCode).toBe('invalid_json');
+    expect(getStore(S).aiHealth.consecutiveFailures).toBe(1);
+  });
+
+  it('resets the streak on the next success, without losing the last error', async () => {
+    __setAiReviewProviderForTest(errorAiProvider('rate_limited', 'Too many requests.'));
+    await runAiReview(S, 'tkt-seed-5');
+    expect(getStore(S).aiHealth.consecutiveFailures).toBe(1);
+
+    __resetAiReviewProviderForTest();
+    await runAiReview(S, 'tkt-seed-5');
+
+    const health = getStore(S).aiHealth;
+    expect(health.consecutiveFailures).toBe(0);
+    expect(health.lastSuccessAt).toEqual(expect.any(String));
+    // The streak is current-run-of-failures, not a lifetime tally, but the last
+    // error is retained so a recovered blip is still visible.
+    expect(health.lastErrorCode).toBe('rate_limited');
+  });
+});
+
+/**
+ * Orchestration driven by the REAL Hugging Face provider with `fetch` stubbed —
+ * no call ever leaves the process. Proves the transport swap changes nothing
+ * downstream: same parser, same scorer, same freezing, same flags.
+ */
+describe('with the Hugging Face provider (fetch stubbed)', () => {
+  const hfResponse = (body: unknown, headers: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    });
+
+  /** A model reply that answers every criterion properly. */
+  function modelReply(overrides: Record<string, CriterionValue> = {}): string {
+    const findings = Object.fromEntries(
+      allCriteria(QUALITY_RUBRIC).map((c) => [
+        c.id,
+        {
+          value: overrides[c.id] ?? 'yes',
+          rationale: `Assessed ${c.id}.`,
+          evidence: `agent: "…${c.id}…"`,
+          confidence: 0.7,
+        },
+      ]),
+    );
+    return JSON.stringify({ findings });
+  }
+
+  function stubHuggingFace(text: string, headers: Record<string, string> = {}) {
+    process.env.HEYQ_HF_TOKEN = 'hf_test_token';
+    __setAiReviewProviderForTest(huggingFaceAiProvider);
+    const fetchMock = vi.fn().mockResolvedValue(hfResponse([{ generated_text: text }], headers));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('produces a scored, frozen review from a real-provider-shaped response', async () => {
+    const fetchMock = stubHuggingFace(modelReply(), { 'x-repo-commit': 'sha-9f2' });
+
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(review.ai?.provider).toBe('huggingface');
+    expect(review.ai?.status).toBe('succeeded');
+    expect(review.ai?.modelVersion).toBe('sha-9f2');
+    expect(review.ai?.latencyMs).toEqual(expect.any(Number));
+    // The configured model is used as given — the transport substitutes nothing.
+    expect(review.ai?.model).toBe(DEFAULT_REVIEW_CONFIG.model);
+    expect(review.score).toEqual(computeReviewScore(review.responses));
+    expect(review.score?.percent).toBe(100);
+    expect(review.thresholdPercent).toBe(DEFAULT_REVIEW_CONFIG.thresholdPercent);
+    expect(getStore(S).aiHealth.consecutiveFailures).toBe(0);
+  });
+
+  it('applies the same zero-tolerance rule to a real response', async () => {
+    stubHuggingFace(modelReply({ respectful_tone: 'no' }));
+    const review = await runAiReview(S, 'tkt-seed-8');
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('zero_tolerance');
+  });
+
+  it('records a missing token as a failed review and a health failure', async () => {
+    delete process.env.HEYQ_HF_TOKEN;
+    __setAiReviewProviderForTest(huggingFaceAiProvider);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const review = await runAiReview(S, 'tkt-seed-10');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(review.ai?.status).toBe('failed');
+    expect(review.ai?.error?.code).toBe('missing_token');
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(getStore(S).aiHealth.lastErrorCode).toBe('missing_token');
+  });
+
+  it('persists the upstream failure code, not a generic one', async () => {
+    process.env.HEYQ_HF_TOKEN = 'hf_test_token';
+    __setAiReviewProviderForTest(huggingFaceAiProvider);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })));
+
+    const review = await runAiReview(S, 'tkt-seed-10');
+    expect(review.ai?.error?.code).toBe('auth_error');
+    expect(getStore(S).aiHealth.lastErrorCode).toBe('auth_error');
+  });
+
+  it('leaves the ticket in the supervisor queue after an upstream failure', async () => {
+    process.env.HEYQ_HF_TOKEN = 'hf_test_token';
+    __setAiReviewProviderForTest(huggingFaceAiProvider);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 500 })));
+
+    await runAiReview(S, 'tkt-seed-10');
+    const reviewable = await listReviewable(S);
+    expect(reviewable.map((t) => t.ticketId)).toContain('tkt-seed-10');
+  });
+
+  it('never modifies a supervisor review, whatever the model returned', async () => {
+    stubHuggingFace(modelReply());
+    const before = structuredClone(supervisorReviewForTicket(getStore(S), 'tkt-seed-7')!);
+    await runAiReview(S, 'tkt-seed-7');
+    expect(supervisorReviewForTicket(getStore(S), 'tkt-seed-7')).toEqual(before);
   });
 });

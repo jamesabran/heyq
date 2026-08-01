@@ -124,12 +124,34 @@ describe('failure modes', () => {
 });
 
 describe('provider selection', () => {
+  afterEach(() => delete process.env.HEYQ_AI_PROVIDER);
+
   it('defaults to the fake and can be swapped for a test', async () => {
     expect(getAiReviewProvider().id).toBe('fake');
     __setAiReviewProviderForTest(unavailableAiProvider);
     expect(getAiReviewProvider().id).toBe('fake-unavailable');
     __resetAiReviewProviderForTest();
     expect(getAiReviewProvider().id).toBe('fake');
+  });
+
+  it('selects Hugging Face only when explicitly asked to', () => {
+    // A deployment must OPT IN to spending real inference; the suite and the
+    // demo stay offline unless someone says otherwise.
+    expect(getAiReviewProvider().id).toBe('fake');
+    process.env.HEYQ_AI_PROVIDER = 'huggingface';
+    expect(getAiReviewProvider().id).toBe('huggingface');
+    process.env.HEYQ_AI_PROVIDER = 'fake';
+    expect(getAiReviewProvider().id).toBe('fake');
+    process.env.HEYQ_AI_PROVIDER = 'something-else';
+    expect(getAiReviewProvider().id).toBe('fake');
+  });
+
+  it('selection is independent of the token, so a missing token is reportable', () => {
+    // If selection keyed off the token, a misconfigured deployment would silently
+    // fall back to FAKE scores instead of reporting that it cannot grade.
+    process.env.HEYQ_AI_PROVIDER = 'huggingface';
+    delete process.env.HEYQ_HF_TOKEN;
+    expect(getAiReviewProvider().id).toBe('huggingface');
   });
 
   it('answers exactly as scripted, so a test can pin a score', async () => {

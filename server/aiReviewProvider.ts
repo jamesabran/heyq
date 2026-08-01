@@ -7,15 +7,16 @@
  * control flow rather than an exception that could escape into a ticket
  * operation.
  *
- * Phase 1 ships a deterministic FAKE transport: no network call is made from
- * anywhere in this file, and none may be added — Hugging Face/Gemma arrives in
- * Phase 2 by implementing `AiReviewProvider` against a real fetch and swapping
- * the default. Orchestration, parsing, scoring, and UI stay untouched by that
- * swap, which is the whole point of this seam.
+ * This file holds the INTERFACE, the failure taxonomy, the deterministic fake,
+ * and the selection seam. It makes no network call and none may be added here —
+ * the real Hugging Face transport lives in aiReviewHuggingFace.ts and is chosen
+ * by `HEYQ_AI_PROVIDER`. Orchestration, parsing, scoring, and UI are identical
+ * either way, which is the whole point of this seam.
  */
 import { allCriteria, QUALITY_RUBRIC } from '../src/app/data/reviewRubric.ts';
 import type { CriterionValue } from '../src/app/models/review.ts';
 import type { AiReviewPrompt } from './aiReviewPrompt.ts';
+import { huggingFaceAiProvider } from './aiReviewHuggingFace.ts';
 
 export interface AiReviewRequest {
   prompt: AiReviewPrompt;
@@ -23,13 +24,47 @@ export interface AiReviewRequest {
 }
 
 /**
+ * Stable failure codes, persisted on the review record and on `aiHealth`. They
+ * are part of the stored contract: renaming one rewrites the meaning of history,
+ * so they are deliberately transport-neutral rather than HTTP-shaped.
+ *
+ * `invalid_response` covers a call that SUCCEEDED at the transport level but
+ * whose body was not the shape a provider must return; the strict parser's own
+ * codes cover output that was well-formed JSON but not a usable review.
+ */
+export type AiFailureCode =
+  | 'missing_token'
+  | 'timeout'
+  | 'network_error'
+  | 'rate_limited'
+  | 'model_loading'
+  | 'auth_error'
+  | 'invalid_request'
+  | 'upstream_error'
+  | 'invalid_response';
+
+/** Failures worth one more attempt — the condition may simply pass. */
+export const TRANSIENT_FAILURE_CODES: AiFailureCode[] = [
+  'timeout',
+  'network_error',
+  'rate_limited',
+  'model_loading',
+  'upstream_error',
+];
+
+export const isTransientFailure = (code: AiFailureCode): boolean => TRANSIENT_FAILURE_CODES.includes(code);
+
+/**
  * `raw` is the model's unparsed text — deliberately NOT pre-parsed here, so the
  * strict parser in aiReviewPrompt.ts sees exactly what a real model returned.
+ *
+ * `unavailable` carries an optional code so the fake can stay code-free while a
+ * real transport reports precisely WHY the model could not be reached.
  */
 export type AiGradeResult =
-  | { status: 'ok'; raw: string; latencyMs: number }
-  | { status: 'unavailable' }
-  | { status: 'error'; code: string; message: string };
+  | { status: 'ok'; raw: string; latencyMs: number; modelVersion?: string }
+  | { status: 'unavailable'; code?: AiFailureCode; message?: string; latencyMs?: number }
+  | { status: 'error'; code: AiFailureCode | string; message: string; latencyMs?: number };
 
 export interface AiReviewProvider {
   /** Stable identifier stored on every review this provider produces. */
@@ -164,17 +199,32 @@ export const throwingAiProvider: AiReviewProvider = {
 
 // ── Selection ────────────────────────────────────────────────────────────────
 
-let current: AiReviewProvider = fakeAiProvider;
+/**
+ * Which transport to use, from `HEYQ_AI_PROVIDER` (`huggingface` | `fake`).
+ *
+ * The FAKE is the default on purpose: a deployment must opt in to spending real
+ * inference, and the demo and the whole test suite stay offline unless someone
+ * deliberately says otherwise. Selection is separate from the token so that
+ * "configured for Hugging Face but missing a token" is a reachable, reportable
+ * state rather than a silent fallback to a fake score.
+ */
+function providerFromEnv(): AiReviewProvider {
+  return process.env.HEYQ_AI_PROVIDER?.trim().toLowerCase() === 'huggingface'
+    ? huggingFaceAiProvider
+    : fakeAiProvider;
+}
 
-/** The provider orchestration should use. Phase 2 changes this default only. */
+let override: AiReviewProvider | undefined;
+
+/** The provider orchestration should use. */
 export function getAiReviewProvider(): AiReviewProvider {
-  return current;
+  return override ?? providerFromEnv();
 }
 
 export function __setAiReviewProviderForTest(provider: AiReviewProvider): void {
-  current = provider;
+  override = provider;
 }
 
 export function __resetAiReviewProviderForTest(): void {
-  current = fakeAiProvider;
+  override = undefined;
 }

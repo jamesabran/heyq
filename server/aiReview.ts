@@ -108,28 +108,69 @@ function startRun(store: Store, ticketId: string, agentId: string, config: AiRev
   return review;
 }
 
-/** Record a failed run. Always requires supervisor review — failing safe toward a human. */
-function finishFailed(review: QualityReview, error: AiReviewError): QualityReview {
+/**
+ * Roll the AI reviewer's health forward. Called after EVERY attempt, success or
+ * failure, so "one blip" is distinguishable from "consistently broken". A single
+ * success resets the streak — the counter measures the current run of failures,
+ * not a lifetime total.
+ */
+function recordHealth(store: Store, outcome: { ok: true } | { ok: false; code: string }): void {
   const now = nowIso();
-  review.ai = { ...review.ai!, status: 'failed', completedAt: now, error };
+  const health = store.aiHealth;
+  if (outcome.ok) {
+    health.consecutiveFailures = 0;
+    health.lastSuccessAt = now;
+    return;
+  }
+  health.consecutiveFailures += 1;
+  health.lastErrorCode = outcome.code;
+  health.lastErrorAt = now;
+}
+
+/** Record a failed run. Always requires supervisor review — failing safe toward a human. */
+function finishFailed(
+  store: Store,
+  review: QualityReview,
+  error: AiReviewError,
+  latencyMs?: number,
+): QualityReview {
+  const now = nowIso();
+  review.ai = {
+    ...review.ai!,
+    status: 'failed',
+    completedAt: now,
+    error,
+    ...(latencyMs !== undefined ? { latencyMs } : {}),
+  };
   review.status = 'draft'; // nothing was assessed, so nothing is complete
   review.supervisorReviewRequired = true;
   review.supervisorReviewReason = 'ai_failed';
   review.updatedAt = now;
+  recordHealth(store, { ok: false, code: error.code });
   return review;
 }
 
 function finishSucceeded(
+  store: Store,
   review: QualityReview,
   findings: Record<string, AiFinding>,
   config: AiReviewConfig,
+  transport: { latencyMs?: number; modelVersion?: string } = {},
 ): QualityReview {
   const now = nowIso();
   const responses = findingsToResponses(findings);
   const score = computeReviewScore(responses);
   const { required, reason } = decideSupervisorRequired(score, config.thresholdPercent);
 
-  review.ai = { ...review.ai!, status: 'succeeded', completedAt: now, findings };
+  review.ai = {
+    ...review.ai!,
+    status: 'succeeded',
+    completedAt: now,
+    findings,
+    ...(transport.latencyMs !== undefined ? { latencyMs: transport.latencyMs } : {}),
+    // Only ever set when the host actually reported one.
+    ...(transport.modelVersion ? { modelVersion: transport.modelVersion } : {}),
+  };
   review.responses = responses;
   review.score = score;
   review.status = 'submitted';
@@ -141,16 +182,17 @@ function finishSucceeded(
   review.supervisorReviewRequired = required;
   review.supervisorReviewReason = reason;
   review.updatedAt = now;
+  recordHealth(store, { ok: true });
   return review;
 }
 
 /**
  * Run an AI review for one ticket and return the resulting record.
  *
- * Synchronous by design in this phase: the provider is a deterministic local
- * fake, so there is nothing to wait on and a queue would be infrastructure with
- * no work to do. The record carries a `running` status regardless, so moving to
- * a background job later changes the caller, not the stored shape.
+ * Still synchronous and still explicitly triggered: the provider bounds its own
+ * timeout and retries at most once, so the request has a known ceiling. Moving
+ * to a background job changes the caller, not the stored shape — the record
+ * already carries a `running` status and a latency.
  */
 export async function runAiReview(storeId: string, ticketId: string): Promise<QualityReview> {
   const store = getStore(storeId);
@@ -182,22 +224,42 @@ export async function runAiReview(storeId: string, ticketId: string): Promise<Qu
     const result = await getAiReviewProvider().grade({ prompt, model: config.model });
 
     if (result.status === 'unavailable') {
-      return clone(finishFailed(review, { code: 'unavailable', message: 'The AI reviewer is unavailable.' }));
+      // A real transport says WHY it could not be reached; the fake does not.
+      return clone(
+        finishFailed(
+          store,
+          review,
+          { code: result.code ?? 'unavailable', message: result.message ?? 'The AI reviewer is unavailable.' },
+          result.latencyMs,
+        ),
+      );
     }
     if (result.status === 'error') {
-      return clone(finishFailed(review, { code: result.code, message: result.message }));
+      return clone(
+        finishFailed(store, review, { code: result.code, message: result.message }, result.latencyMs),
+      );
     }
 
     const parsed = parseAiReview(result.raw, QUALITY_RUBRIC);
     if (!parsed.ok) {
-      return clone(finishFailed(review, { code: parsed.code, message: parsed.message }));
+      // The call succeeded but the content is unusable — still a failed run, and
+      // still counted against health: a model that reliably returns garbage is
+      // just as broken as one that is down.
+      return clone(
+        finishFailed(store, review, { code: parsed.code, message: parsed.message }, result.latencyMs),
+      );
     }
 
-    return clone(finishSucceeded(review, parsed.findings, config));
+    return clone(
+      finishSucceeded(store, review, parsed.findings, config, {
+        latencyMs: result.latencyMs,
+        modelVersion: result.modelVersion,
+      }),
+    );
   } catch (err) {
     // A provider that breaks its contract and throws is still contained here.
     return clone(
-      finishFailed(review, {
+      finishFailed(store, review, {
         code: 'provider_threw',
         message: err instanceof Error ? err.message : String(err),
       }),

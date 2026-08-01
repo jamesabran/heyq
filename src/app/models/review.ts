@@ -187,18 +187,38 @@ export interface AiReviewError {
  * it failed — why.
  */
 export interface AiReviewMeta {
-  /** Which provider produced this (e.g. the Phase 1 fake). */
+  /** Which provider produced this (`fake`, `huggingface`, …). */
   provider: string;
   model: string;
+  /**
+   * The resolved model revision, when the host reports one. Absent whenever it
+   * does not — never fabricated, since a wrong version on a frozen review is
+   * worse than no version.
+   */
+  modelVersion?: string;
   /** Bumped when the prompt template changes — the prompt's analogue of rubricVersion. */
   promptVersion: string;
   status: AiProcessingStatus;
   requestedAt: string;
   completedAt?: string;
+  /** Round-trip time of the provider call, when it reported one. */
+  latencyMs?: number;
   /** Per-criterion answers + rationales. Present only once succeeded. */
   findings?: Record<string, AiFinding>;
   /** Present only once failed. */
   error?: AiReviewError;
+}
+
+/**
+ * Rolling health of the AI reviewer, updated after every provider attempt.
+ * Deliberately tiny: enough to tell "one blip" from "consistently broken",
+ * without becoming a metrics system inside an in-memory store.
+ */
+export interface AiHealth {
+  consecutiveFailures: number;
+  lastErrorCode?: string;
+  lastErrorAt?: string;
+  lastSuccessAt?: string;
 }
 
 /**

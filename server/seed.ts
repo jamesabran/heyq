@@ -26,7 +26,7 @@ import type {
   TicketAttachment,
   TicketMessage,
 } from '../src/app/models/ticket.ts';
-import type { AiFinding, AiReviewConfig, QualityReview } from '../src/app/models/review.ts';
+import type { AiFinding, AiHealth, AiReviewConfig, QualityReview } from '../src/app/models/review.ts';
 import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
 import type { Notification, NotificationEvent } from '../src/app/models/notification.ts';
 import type {
@@ -86,6 +86,8 @@ export interface SeedState {
    * server never sees and therefore could not enforce.
    */
   reviewConfig: AiReviewConfig;
+  /** Rolling AI reviewer health, updated after every provider attempt. */
+  aiHealth: AiHealth;
   referenceSeq: number;
   // Notifications (ported from src/app/data/notifications.ts, M23/M24 — HeyQ is
   // the sole owner of ticket state, and emit() fires synchronously inside the
@@ -888,6 +890,7 @@ function seed(): SeedState {
     attachments: [],
     qualityReviews,
     reviewConfig: { ...DEFAULT_REVIEW_CONFIG },
+    aiHealth: { consecutiveFailures: 0 },
     // Running reference counter, seeded past the demo tickets.
     referenceSeq: 107,
     notifications,
