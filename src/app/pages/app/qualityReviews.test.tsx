@@ -1,10 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { ThemeProvider } from '../../contexts/ThemeContext';
 import { IdentityProvider } from '../../contexts/IdentityContext';
 import { routes } from '../../routes';
+// The test API server shares this file's module registry (src/test/setup.ts), so
+// the provider seam and store reached over HTTP are the same instances.
+import {
+  unavailableAiProvider,
+  __resetAiReviewProviderForTest,
+  __setAiReviewProviderForTest,
+} from '../../../../server/aiReviewProvider';
 
 function renderApp(path: string, identityId = 'team_lead') {
   window.localStorage.setItem('heyq-identity', identityId);
@@ -199,7 +206,7 @@ describe('quality reviews — AI and supervisor reviews are distinguishable', ()
 
     // The AI review is labelled and scored…
     expect(screen.getByText('AI review')).toBeInTheDocument();
-    expect(screen.getByText(/not a substitute for it/i)).toBeInTheDocument();
+    expect(screen.getByText(/check the findings against the conversation/i)).toBeInTheDocument();
     // …while the supervisor's own form starts empty and unsubmittable.
     expect(screen.getByRole('button', { name: /submit review/i })).toBeDisabled();
     for (const group of screen.getAllByRole('radiogroup')) {
@@ -221,5 +228,113 @@ describe('quality reviews — AI and supervisor reviews are distinguishable', ()
     expect(await screen.findByText(/review submitted/i)).toBeInTheDocument();
     // The AI review is still there afterwards — neither record replaced the other.
     expect(screen.getByText('AI review')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The Run AI review action and how its result is presented. tkt-seed-9 and
+ * tkt-seed-11 have no AI review seeded, so each test starts from an empty panel.
+ */
+describe('quality reviews — running an AI review', () => {
+  afterEach(() => __resetAiReviewProviderForTest());
+
+  it('offers the action to a reviewer, with no AI review yet', async () => {
+    renderApp('/app/reviews/tkt-seed-17', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    expect(screen.getByRole('button', { name: /run ai review/i })).toBeEnabled();
+    expect(screen.getByText(/no ai review yet/i)).toBeInTheDocument();
+  });
+
+  it('shows the AI score, rationales, and an AI label after a successful run', async () => {
+    const user = userEvent.setup();
+    renderApp('/app/reviews/tkt-seed-17', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    await user.click(screen.getByRole('button', { name: /run ai review/i }));
+
+    // Wait on the RESULT, not the panel's type badge — that badge labels the
+    // panel itself and is present before a run has produced anything.
+    await screen.findByText('AI findings');
+
+    // Labelled as AI-generated, with a score and the model that produced it.
+    expect(screen.getByText('AI review')).toBeInTheDocument();
+    // Provenance is on one line, so assert over the whole element's text.
+    const provenance = screen.getByText(/check the findings against the conversation/i);
+    expect(provenance).toHaveTextContent('heyq-fake-reviewer');
+    expect(provenance).toHaveTextContent('rubric v1');
+    expect(provenance).toHaveTextContent('threshold 80%');
+
+    // Per-criterion rationales are shown, not just a bare number. Scoped to the
+    // findings list, since the criterion labels also appear in the form below.
+    const findings = screen.getByText('AI findings').closest('details')!;
+    expect(within(findings).getByText(/15 criteria/i)).toBeInTheDocument();
+    // One rationale per criterion — an unexplained AI score is not reviewable.
+    expect(within(findings).getAllByText(/the conversation shows this standard met/i).length).toBeGreaterThan(0);
+    expect(within(findings).getAllByRole('listitem')).toHaveLength(15);
+    // Re-running is offered once a review exists.
+    expect(screen.getByRole('button', { name: /re-run ai review/i })).toBeInTheDocument();
+  });
+
+  it('shows a failure without breaking the workspace', async () => {
+    const user = userEvent.setup();
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    renderApp('/app/reviews/tkt-seed-10', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    await user.click(screen.getByRole('button', { name: /run ai review/i }));
+
+    expect(await screen.findByText(/didn't complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/ai reviewer is unavailable/i)).toBeInTheDocument();
+    // …and the supervisor can still do their own review.
+    expect(screen.getByRole('button', { name: /save draft/i })).toBeEnabled();
+  });
+
+  it('states WHY a supervisor review is required when the AI fails', async () => {
+    const user = userEvent.setup();
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    renderApp('/app/reviews/tkt-bp-1', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    await user.click(screen.getByRole('button', { name: /run ai review/i }));
+
+    expect(await screen.findByText(/supervisor review required/i)).toBeInTheDocument();
+    expect(screen.getByText(/could not complete this review/i)).toBeInTheDocument();
+  });
+
+  it('leaves the supervisor form empty and independently editable', async () => {
+    const user = userEvent.setup();
+    renderApp('/app/reviews/tkt-bp-2', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    // Type an answer BEFORE running, to prove the run neither clears nor
+    // overwrites work in progress.
+    const empathy = screen.getByRole('radiogroup', { name: /genuine empathy/i });
+    await user.click(within(empathy).getByRole('radio', { name: 'No' }));
+
+    await user.click(screen.getByRole('button', { name: /run ai review/i }));
+    await screen.findByText('AI findings'); // the run has actually produced a result
+
+    // The supervisor's own answer survived, and the AI's answers were NOT copied in.
+    expect(within(empathy).getByRole('radio', { name: 'No' })).toBeChecked();
+    const greeting = screen.getByRole('radiogroup', { name: /on-brand greeting/i });
+    for (const radio of within(greeting).getAllByRole('radio')) expect(radio).not.toBeChecked();
+    // Still incomplete, so still not submittable — the AI did not submit for them.
+    expect(screen.getByRole('button', { name: /submit review/i })).toBeDisabled();
+  });
+
+  it('still renders the seeded AI review beside a supervisor review', async () => {
+    // An earlier test in this file submitted a supervisor review on tkt-bp-4, so
+    // this is the both-types-present case: the AI record and the supervisor's own
+    // assessment are shown together, each labelled, neither replacing the other.
+    renderApp('/app/reviews/tkt-bp-4', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    expect(screen.getByText('AI review')).toBeInTheDocument();
+    expect(screen.getByText('96%')).toBeInTheDocument(); // the seeded AI score
+    // 96% is above the 80% threshold, so no supervisor review was REQUIRED —
+    // and one was still performed, which is the whole point.
+    expect(screen.queryByText(/supervisor review required/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/final and can no longer be edited/i)).toBeInTheDocument();
   });
 });

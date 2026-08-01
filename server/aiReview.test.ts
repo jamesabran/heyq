@@ -1,0 +1,279 @@
+/**
+ * AI review orchestration (server/aiReview.ts).
+ *
+ * The rules proven here are the ones a supervisor's trust rests on: the AI is
+ * scored by the SAME function a supervisor is, its conclusion is frozen against
+ * the threshold in force at the time, every failure mode falls back to requiring
+ * a human, and none of it touches the manual review flow or the ticket.
+ */
+import { afterEach, describe, expect, it } from 'vitest';
+import { decideSupervisorRequired, runAiReview } from './aiReview.ts';
+import {
+  errorAiProvider,
+  rawAiProvider,
+  scriptedAiProvider,
+  throwingAiProvider,
+  unavailableAiProvider,
+  __resetAiReviewProviderForTest,
+  __setAiReviewProviderForTest,
+} from './aiReviewProvider.ts';
+import { latestAiReviewForTicket, listReviewable, saveDraft, supervisorReviewForTicket } from './reviews.ts';
+import { getStore } from './store.ts';
+import { DEFAULT_REVIEW_CONFIG, FAKE_AI_MODEL } from './seed.ts';
+import { QUALITY_RUBRIC, allCriteria } from '../src/app/data/reviewRubric.ts';
+import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
+import type { CriterionValue, ReviewScore } from '../src/app/models/review.ts';
+
+const S = 'default';
+
+/** Every criterion 'yes', then the given overrides — a complete answer set. */
+function answers(overrides: Record<string, CriterionValue> = {}): Record<string, CriterionValue> {
+  const all = Object.fromEntries(allCriteria(QUALITY_RUBRIC).map((c) => [c.id, 'yes' as CriterionValue]));
+  return { ...all, ...overrides };
+}
+
+/** Scores 81% — the anchor for the threshold-boundary tests. */
+const EIGHTY_ONE = answers({ greeting: 'no', used_evidence: 'no', took_ownership: 'no' });
+
+const setThreshold = (percent: number) => {
+  getStore(S).reviewConfig.requireSupervisorBelowPercent = percent;
+};
+
+afterEach(() => {
+  __resetAiReviewProviderForTest();
+  getStore(S).reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
+});
+
+describe('a successful run', () => {
+  it('completes as succeeded and records both timestamps', async () => {
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(review.reviewType).toBe('ai');
+    expect(review.ai?.status).toBe('succeeded');
+    expect(review.ai?.requestedAt).toEqual(expect.any(String));
+    expect(review.ai?.completedAt).toEqual(expect.any(String));
+    expect(review.status).toBe('submitted');
+    // The agent under review is the ticket's handler, never a caller input.
+    expect(review.agentId).toBe('l1_agent');
+  });
+
+  it('scores with the existing scoring function, not a second implementation', async () => {
+    __setAiReviewProviderForTest(scriptedAiProvider(EIGHTY_ONE));
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(review.score).toEqual(computeReviewScore(review.responses));
+    expect(review.score?.percent).toBe(81);
+  });
+
+  it('freezes the rubric, prompt, model and threshold onto the record', async () => {
+    setThreshold(75);
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(review.rubricVersion).toBe(QUALITY_RUBRIC.version);
+    expect(review.ai?.promptVersion).toBe('v1');
+    expect(review.ai?.model).toBe(FAKE_AI_MODEL);
+    expect(review.ai?.provider).toBe('fake');
+    expect(review.thresholdPercent).toBe(75);
+
+    // Changing the threshold afterwards must NOT rewrite a completed review.
+    setThreshold(99);
+    const stored = latestAiReviewForTicket(getStore(S), 'tkt-seed-5')!;
+    expect(stored.thresholdPercent).toBe(75);
+    expect(stored.supervisorReviewRequired).toBe(review.supervisorReviewRequired);
+  });
+
+  it('keeps a rationale for every criterion it answered', async () => {
+    const review = await runAiReview(S, 'tkt-seed-5');
+    const findings = review.ai!.findings!;
+    expect(Object.keys(findings)).toHaveLength(allCriteria(QUALITY_RUBRIC).length);
+    for (const finding of Object.values(findings)) expect(finding.rationale).not.toBe('');
+  });
+});
+
+describe('supervisor-review-required', () => {
+  it('is NOT required when the score is exactly the threshold', async () => {
+    setThreshold(81);
+    __setAiReviewProviderForTest(scriptedAiProvider(EIGHTY_ONE));
+    const review = await runAiReview(S, 'tkt-seed-8');
+
+    expect(review.score?.percent).toBe(81);
+    expect(review.supervisorReviewRequired).toBe(false);
+    expect(review.supervisorReviewReason).toBeUndefined();
+  });
+
+  it('is required when the score is below the threshold', async () => {
+    setThreshold(82);
+    __setAiReviewProviderForTest(scriptedAiProvider(EIGHTY_ONE));
+    const review = await runAiReview(S, 'tkt-seed-8');
+
+    expect(review.score?.percent).toBe(81);
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('low_score');
+  });
+
+  it('is required on a zero-tolerance finding however high the percentage', async () => {
+    setThreshold(80);
+    __setAiReviewProviderForTest(scriptedAiProvider(answers({ respectful_tone: 'no' })));
+    const review = await runAiReview(S, 'tkt-seed-10');
+
+    expect(review.score?.percent).toBe(92); // comfortably above the threshold
+    expect(review.score?.zeroToleranceFailures).toContain('respectful_tone');
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('zero_tolerance');
+  });
+
+  it('treats an unscorable result as requiring review', () => {
+    // Unreachable through the provider path — the parser refuses `na` and demands
+    // every criterion, so `possible` can never be 0. Pinned directly because the
+    // decision must stay correct if that ever changes.
+    const unscorable: ReviewScore = {
+      earned: 0, possible: 0, percent: null, zeroToleranceFailures: [], unansweredRequired: 0,
+    };
+    expect(decideSupervisorRequired(unscorable, 80)).toEqual({ required: true, reason: 'unscorable' });
+  });
+
+  it('ranks a zero-tolerance finding above a low score', () => {
+    const both: ReviewScore = {
+      earned: 10, possible: 100, percent: 10, zeroToleranceFailures: ['data_privacy'], unansweredRequired: 0,
+    };
+    expect(decideSupervisorRequired(both, 80).reason).toBe('zero_tolerance');
+  });
+});
+
+describe('failure is contained and falls back to a human', () => {
+  const expectFailed = (review: Awaited<ReturnType<typeof runAiReview>>, code: string) => {
+    expect(review.ai?.status).toBe('failed');
+    expect(review.ai?.error?.code).toBe(code);
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('ai_failed');
+    // Nothing was assessed, so nothing is presented as a completed assessment.
+    expect(review.status).toBe('draft');
+    expect(review.score).toBeUndefined();
+  };
+
+  it('records an unavailable provider as a failed review', async () => {
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    expectFailed(await runAiReview(S, 'tkt-seed-15'), 'unavailable');
+  });
+
+  it('records a provider error as a failed review', async () => {
+    __setAiReviewProviderForTest(errorAiProvider('rate_limited', 'Too many requests.'));
+    expectFailed(await runAiReview(S, 'tkt-seed-15'), 'rate_limited');
+  });
+
+  it('records malformed output as a failed review', async () => {
+    __setAiReviewProviderForTest(rawAiProvider('The agent did great, honestly.'));
+    expectFailed(await runAiReview(S, 'tkt-seed-16'), 'invalid_json');
+  });
+
+  it('records an unknown criterion as a failed review', async () => {
+    __setAiReviewProviderForTest(
+      rawAiProvider(JSON.stringify({ findings: { made_up: { value: 'yes', rationale: 'x' } } })),
+    );
+    expectFailed(await runAiReview(S, 'tkt-seed-16'), 'unknown_criterion');
+  });
+
+  it('contains a provider that throws instead of returning a result', async () => {
+    __setAiReviewProviderForTest(throwingAiProvider);
+    expectFailed(await runAiReview(S, 'tkt-seed-17'), 'provider_threw');
+  });
+});
+
+describe('configuration', () => {
+  it('refuses to run when an admin has AI reviews turned off', async () => {
+    getStore(S).reviewConfig.enabled = false;
+    await expect(runAiReview(S, 'tkt-seed-5')).rejects.toThrow(/disabled/i);
+  });
+
+  it('creates no record at all when refused', async () => {
+    // tkt-bp-3 is assigned and has no AI review, so the refusal is proven to
+    // happen before any record is written — not merely before the assignee check.
+    expect(latestAiReviewForTicket(getStore(S), 'tkt-bp-3')).toBeUndefined();
+    getStore(S).reviewConfig.enabled = false;
+    await expect(runAiReview(S, 'tkt-bp-3')).rejects.toThrow(/disabled/i);
+    expect(latestAiReviewForTicket(getStore(S), 'tkt-bp-3')).toBeUndefined();
+  });
+
+  it('refuses a ticket with no assigned agent', async () => {
+    await expect(runAiReview(S, 'tkt-seed-3')).rejects.toThrow(/no assigned agent/i);
+  });
+
+  it('refuses an unknown ticket', async () => {
+    await expect(runAiReview(S, 'nope')).rejects.toThrow(/not found/i);
+  });
+});
+
+describe('isolation from the manual flow', () => {
+  it('never modifies the ticket\'s supervisor review', async () => {
+    const store = getStore(S);
+    // tkt-seed-7 carries a seeded supervisor DRAFT.
+    const before = structuredClone(supervisorReviewForTicket(store, 'tkt-seed-7')!);
+
+    await runAiReview(S, 'tkt-seed-7');
+
+    const after = supervisorReviewForTicket(store, 'tkt-seed-7')!;
+    expect(after).toEqual(before);
+    expect(after.id).toBe('qr-seed-2');
+    expect(after.reviewType).toBeUndefined(); // untouched, still legacy-shaped
+  });
+
+  it('leaves the ticket available for supervisor review after AI SUCCESS', async () => {
+    await runAiReview(S, 'tkt-seed-10');
+    const reviewable = await listReviewable(S);
+    expect(reviewable.map((t) => t.ticketId)).toContain('tkt-seed-10');
+
+    // …and a lead can still start their own review of it.
+    const draft = await saveDraft(S, { ticketId: 'tkt-seed-10', reviewerId: 'team_lead', responses: { empathy: 'no' } });
+    expect(draft.reviewType).toBe('supervisor');
+  });
+
+  it('leaves the ticket available for supervisor review after AI FAILURE', async () => {
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    await runAiReview(S, 'tkt-bp-2');
+    const reviewable = await listReviewable(S);
+    expect(reviewable.map((t) => t.ticketId)).toContain('tkt-bp-2');
+  });
+
+  it('does not change the ticket', async () => {
+    const store = getStore(S);
+    const before = structuredClone(store.tickets.find((t) => t.id === 'tkt-seed-17')!);
+    await runAiReview(S, 'tkt-seed-17');
+    expect(store.tickets.find((t) => t.id === 'tkt-seed-17')).toEqual(before);
+  });
+});
+
+describe('re-running', () => {
+  it('is deterministic and replaces the record in place', async () => {
+    const first = await runAiReview(S, 'tkt-seed-5');
+    const second = await runAiReview(S, 'tkt-seed-5');
+
+    expect(second.id).toBe(first.id); // one AI review per ticket, not a pile
+    expect(second.responses).toEqual(first.responses); // same ticket ⇒ same grade
+    expect(second.score).toEqual(first.score);
+    expect(getStore(S).qualityReviews.filter((r) => r.ticketId === 'tkt-seed-5' && r.reviewType === 'ai')).toHaveLength(1);
+  });
+
+  it('re-runs the SEEDED AI review without corrupting anything else', async () => {
+    const store = getStore(S);
+    const supervisorBefore = structuredClone(store.qualityReviews.filter((r) => r.reviewType !== 'ai'));
+
+    const rerun = await runAiReview(S, 'tkt-bp-4');
+    expect(rerun.id).toBe('qr-seed-3'); // the existing AI record, reused
+    expect(rerun.ai?.status).toBe('succeeded');
+
+    // Every supervisor record in the store is byte-for-byte unchanged.
+    expect(store.qualityReviews.filter((r) => r.reviewType !== 'ai')).toEqual(supervisorBefore);
+  });
+
+  it('clears a previous success when a re-run fails, rather than leaving a stale score', async () => {
+    const ok = await runAiReview(S, 'tkt-bp-1');
+    expect(ok.score?.percent).toEqual(expect.any(Number));
+
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    const failed = await runAiReview(S, 'tkt-bp-1');
+    expect(failed.id).toBe(ok.id);
+    expect(failed.score).toBeUndefined();
+    expect(failed.responses).toEqual({});
+    expect(failed.supervisorReviewRequired).toBe(true);
+  });
+});

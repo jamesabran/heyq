@@ -16,6 +16,9 @@ import * as reports from './reports.ts';
 import * as audit from './audit.ts';
 import * as customer from './customer.ts';
 import * as reviews from './reviews.ts';
+import * as aiReview from './aiReview.ts';
+import { requireRole } from './authz.ts';
+import { REVIEW_ROLES } from '../src/app/lib/roles.ts';
 import { attachRealtime, mintAgentToken, mintCustomerToken } from './realtime.ts';
 import { getStore, setDown } from './store.ts';
 import { parseMultipart, type MultipartFile } from './multipart.ts';
@@ -164,6 +167,7 @@ function applyCors(req: IncomingMessage, res: ServerResponse): void {
 function statusForError(err: unknown): number {
   const msg = err instanceof Error ? err.message : String(err);
   if (/not found/i.test(msg)) return 404;
+  if (/not authorized/i.test(msg)) return 403;
   if (/unreachable|unavailable/i.test(msg)) return 503;
   return 400;
 }
@@ -498,6 +502,18 @@ const routes: Route[] = [
       return reviews.submitReview(storeId, {
         ticketId: b.ticketId, reviewerId: b.reviewerId, responses: b.responses ?? {}, feedback: b.feedback,
       });
+    },
+  },
+  {
+    // Explicitly run an AI review for one ticket. Role-checked SERVER-side so the
+    // restriction survives a caller that never loads the UI; refused outright
+    // when an admin has AI reviews turned off. Synchronous in this phase — the
+    // provider is a local fake, so there is nothing to queue.
+    method: 'POST', pattern: '/reviews/ai/run',
+    handler: async (req, _p, _q, storeId) => {
+      const b = await readJsonBody(req);
+      requireRole(b.actorId, REVIEW_ROLES, 'run an AI quality review');
+      return aiReview.runAiReview(storeId, b.ticketId);
     },
   },
 

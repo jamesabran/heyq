@@ -51,3 +51,15 @@ export async function saveDraft(input: SaveReviewInput): Promise<QualityReview> 
 export async function submitReview(input: SaveReviewInput): Promise<QualityReview> {
   return apiPost<QualityReview>('/reviews/submit', input);
 }
+
+/**
+ * Run an AI review for a ticket and return the resulting AI record. The actor is
+ * sent so the SERVER can enforce the review-role restriction — the button being
+ * hidden is a convenience, not the control.
+ *
+ * Never touches the supervisor review: a failed or low-scoring AI result changes
+ * nothing about the form the supervisor is filling in.
+ */
+export async function runAiReview(ticketId: string, actorId: string): Promise<QualityReview> {
+  return apiPost<QualityReview>('/reviews/ai/run', { ticketId, actorId });
+}

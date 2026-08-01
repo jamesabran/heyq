@@ -26,7 +26,7 @@ import type {
   TicketAttachment,
   TicketMessage,
 } from '../src/app/models/ticket.ts';
-import type { QualityReview } from '../src/app/models/review.ts';
+import type { AiFinding, AiReviewConfig, QualityReview } from '../src/app/models/review.ts';
 import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
 import type { Notification, NotificationEvent } from '../src/app/models/notification.ts';
 import type {
@@ -42,6 +42,25 @@ const BRAND = 'ggx';
 // is scoped to.
 export const BP_DEMO_USER = 'max@email.com';
 export const BP_DEMO_ORG = 'main';
+
+/**
+ * The Phase 1 stand-in model. Named so it can never be mistaken for a real hosted
+ * model in a screenshot or a stored record — the Hugging Face/Gemma identifier
+ * replaces this value when the real transport lands, with no other change.
+ */
+export const FAKE_AI_MODEL = 'heyq-fake-reviewer';
+
+/**
+ * AI Review defaults. 80% sits inside the board's existing 70–89 middle band —
+ * above the band the UI already treats as poor, below the 90+ band it treats as
+ * strong — so it flags middling handling without flooding supervisors.
+ */
+export const DEFAULT_REVIEW_CONFIG: AiReviewConfig = {
+  enabled: true,
+  requireSupervisorBelowPercent: 80,
+  model: FAKE_AI_MODEL,
+  promptVersion: 'v1',
+};
 
 export interface SeedState {
   requesters: Requester[];
@@ -60,6 +79,13 @@ export interface SeedState {
   // an agent handled a ticket. Kept in the same store because the workspace reads
   // ticket evidence and the review together; reviews never mutate ticket state.
   qualityReviews: QualityReview[];
+  /**
+   * AI Review configuration. Server-owned and read on every AI run, so the toggle
+   * and threshold cannot be bypassed from the browser. Deliberately NOT modelled
+   * on `slaConfig` (src/app/data/catalog.ts), which is browser module state the
+   * server never sees and therefore could not enforce.
+   */
+  reviewConfig: AiReviewConfig;
   referenceSeq: number;
   // Notifications (ported from src/app/data/notifications.ts, M23/M24 — HeyQ is
   // the sole owner of ticket state, and emit() fires synchronously inside the
@@ -654,6 +680,30 @@ function seed(): SeedState {
     verified_identity: 'yes', data_privacy: 'yes', no_unauthorized_promises: 'yes',
   } as const;
 
+  // Rationales for the seeded AI review — every criterion carries one, because an
+  // AI score a supervisor cannot check against the conversation is not reviewable.
+  const aiRationales: Record<string, string> = {
+    greeting: 'Opened with a branded greeting and the ticket reference.',
+    empathy: 'Acknowledged the delay in remittance and its cash-flow impact.',
+    clarity: 'Explained the remittance cycle without internal jargon.',
+    respectful_tone: 'Tone stayed courteous across the whole thread.',
+    reviewed_context: 'Read the linked order before the first reply.',
+    used_evidence: 'Quoted the remittance record to explain the amount.',
+    took_ownership: 'Followed the case through to the payout confirmation.',
+    accurate_diagnosis: 'Correctly identified a scheduling gap, not a shortfall.',
+    followed_process: 'Applied the standard remittance-query steps in order.',
+    complete_resolution: 'Confirmed the payout and closed with the reference.',
+    set_expectations: 'Did not state when the next remittance would land.',
+    timely_handling: 'First reply well inside the target window.',
+    verified_identity: 'Confirmed the requester against the account before details.',
+    data_privacy: 'Shared no card or bank detail beyond the masked reference.',
+    no_unauthorized_promises: 'Made no commitment outside the published schedule.',
+  };
+
+  const aiFindings: Record<string, AiFinding> = Object.fromEntries(
+    Object.entries(aiResponses).map(([id, value]) => [id, { value, rationale: aiRationales[id] }]),
+  );
+
   const qualityReviews: QualityReview[] = [
     {
       // tkt-bp-3 — Alex Cruz (l1_agent) resolved a COD shortfall correctly, but a
@@ -688,6 +738,9 @@ function seed(): SeedState {
       // AI review with no supervisor review beside it. `reviewerId` is the
       // placeholder `ai`: the record has no human owner. It does NOT take the
       // ticket out of the supervisor queue, and a lead may still review it.
+      // It scored 96% — comfortably above the 80% threshold — so no supervisor
+      // review is REQUIRED, which is precisely the case that must still leave the
+      // ticket open to one.
       id: 'qr-seed-3', ticketId: 'tkt-bp-4', agentId: 'l1_agent', reviewerId: 'ai',
       reviewType: 'ai', status: 'submitted', rubricVersion: 'v1',
       responses: { ...aiResponses },
@@ -697,6 +750,14 @@ function seed(): SeedState {
         reviewerComments: '',
       },
       score: computeReviewScore({ ...aiResponses }),
+      ai: {
+        provider: 'fake', model: FAKE_AI_MODEL, promptVersion: 'v1',
+        status: 'succeeded',
+        requestedAt: '2026-07-14T04:00:00Z', completedAt: '2026-07-14T04:00:00Z',
+        findings: aiFindings,
+      },
+      supervisorReviewRequired: false,
+      thresholdPercent: 80,
       createdAt: '2026-07-14T04:00:00Z', updatedAt: '2026-07-14T04:00:00Z', submittedAt: '2026-07-14T04:00:00Z',
     },
   ];
@@ -814,6 +875,7 @@ function seed(): SeedState {
     requesterAccess,
     attachments: [],
     qualityReviews,
+    reviewConfig: { ...DEFAULT_REVIEW_CONFIG },
     // Running reference counter, seeded past the demo tickets.
     referenceSeq: 107,
     notifications,
