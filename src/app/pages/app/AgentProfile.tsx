@@ -9,6 +9,7 @@ import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { Badge } from '../../components/ui/Badge';
 import { Card, CardContent } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
+import { ReviewTypeBadge } from '../../components/review/ReviewTypeBadge';
 
 /**
  * Agent profile — the second review entry point. Lists the agent's handled tickets
@@ -96,6 +97,7 @@ export function AgentProfile() {
               <thead className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-3 py-2 font-medium">Reference</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Type</th>
                   <th scope="col" className="px-3 py-2 font-medium">Reviewer</th>
                   <th scope="col" className="px-3 py-2 font-medium">State</th>
                   <th scope="col" className="px-3 py-2 font-medium">Score</th>
@@ -112,6 +114,9 @@ export function AgentProfile() {
                       <td className="px-3 py-2.5 align-top">
                         <Link to={`/app/reviews/${review.ticketId}`} className="font-medium text-accent-brand hover:underline">{item.ticketReference}</Link>
                       </td>
+                      {/* Authorship comes from the record's type, never from the
+                          reviewer name beside it. */}
+                      <td className="px-3 py-2.5 align-top"><ReviewTypeBadge review={review} /></td>
                       <td className="px-3 py-2.5 align-top text-muted-foreground">{item.reviewerName}</td>
                       <td className="px-3 py-2.5 align-top">
                         <Badge variant={review.status === 'submitted' ? 'success' : 'outline'}>
