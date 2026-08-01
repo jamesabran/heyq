@@ -156,3 +156,70 @@ describe('quality reviews — workspace & scoring', () => {
     expect(screen.getByText('96%')).toBeInTheDocument();
   });
 });
+
+/**
+ * tkt-bp-4 (HQ-2026-0104) carries a seeded AI review and no supervisor review.
+ * These run in order: the board and profile label it, then a lead reviews it.
+ */
+describe('quality reviews — AI and supervisor reviews are distinguishable', () => {
+  it('labels the AI-reviewed ticket on the board but keeps it in "To review"', async () => {
+    renderApp('/app/reviews', 'team_lead');
+    await screen.findByRole('heading', { name: 'Quality Reviews' });
+
+    // Still queued for a supervisor, with the AI context labelled on the row.
+    const row = (await screen.findByRole('link', { name: 'HQ-2026-0104' })).closest('tr')!;
+    expect(within(row).getByText('AI review')).toBeInTheDocument();
+    expect(within(row).getByRole('link', { name: /start review/i })).toBeInTheDocument();
+
+    // The AI review does NOT occupy a supervisor workflow column — every review
+    // listed under "Completed" is labelled as a supervisor review.
+    const completed = screen.getByRole('heading', { name: /completed/i }).closest('section')!;
+    expect(within(completed).queryByText('AI review')).not.toBeInTheDocument();
+    expect(within(completed).getAllByText('Supervisor review').length).toBeGreaterThan(0);
+  });
+
+  it('labels both review types on the agent profile', async () => {
+    renderApp('/app/agents/l1_agent', 'team_lead');
+    await screen.findByRole('heading', { name: 'Alex Cruz' });
+
+    // Scoped to the review history — HQ-2026-0104 also appears in the agent's
+    // "Tickets to review" list, which is exactly the point: an AI review does not
+    // take it off that list.
+    const history = screen.getByRole('heading', { name: /^reviews/i }).closest('section')!;
+    const aiRow = within(history).getByRole('link', { name: 'HQ-2026-0104' }).closest('tr')!;
+    expect(within(aiRow).getByText('AI review')).toBeInTheDocument();
+    // The agent's supervisor review is labelled as such, on its own row.
+    const supervisorRow = within(history).getByRole('link', { name: 'HQ-2026-0103' }).closest('tr')!;
+    expect(within(supervisorRow).getByText('Supervisor review')).toBeInTheDocument();
+  });
+
+  it('shows the AI review as read-only context without prefilling the form', async () => {
+    renderApp('/app/reviews/tkt-bp-4', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    // The AI review is labelled and scored…
+    expect(screen.getByText('AI review')).toBeInTheDocument();
+    expect(screen.getByText(/not a substitute for it/i)).toBeInTheDocument();
+    // …while the supervisor's own form starts empty and unsubmittable.
+    expect(screen.getByRole('button', { name: /submit review/i })).toBeDisabled();
+    for (const group of screen.getAllByRole('radiogroup')) {
+      for (const radio of within(group).getAllByRole('radio')) {
+        expect(radio).not.toBeChecked();
+      }
+    }
+  });
+
+  it('lets a supervisor start and submit a review on an AI-reviewed ticket', async () => {
+    const user = userEvent.setup();
+    renderApp('/app/reviews/tkt-bp-4', 'team_lead');
+
+    const submit = await screen.findByRole('button', { name: /submit review/i });
+    await answerAllYes(user);
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+    expect(await screen.findByText(/review submitted/i)).toBeInTheDocument();
+    // The AI review is still there afterwards — neither record replaced the other.
+    expect(screen.getByText('AI review')).toBeInTheDocument();
+  });
+});

@@ -629,14 +629,28 @@ function seed(): SeedState {
     // portal access, so there is nothing for a customer to open.
   ];
 
-  // ── Quality reviews (Supervisor) ──────────────────────────────────────────
-  // One COMPLETED review (feeds the "Completed" column and the score filter) and
-  // one DRAFT (the "In progress" column). Every other assigned ticket falls into
-  // "To review". Carlo Reyes (team_lead) is the reviewer in both.
+  // ── Quality reviews ───────────────────────────────────────────────────────
+  // One COMPLETED supervisor review (feeds the "Completed" column and the score
+  // filter) and one DRAFT (the "In progress" column). Every other assigned ticket
+  // falls into "To review". Carlo Reyes (team_lead) is the reviewer in both.
+  //
+  // Neither carries `reviewType` — they stand in for records written before the
+  // field existed, and must keep reading as supervisor reviews (`reviewTypeOf`).
+  //
+  // A third record is an AI review on a ticket with NO supervisor review, so the
+  // demo shows the two types coexisting: the ticket stays in "To review" and a
+  // lead can still start their own review of it.
   const completedResponses = {
     greeting: 'yes', empathy: 'yes', clarity: 'yes', respectful_tone: 'yes',
     reviewed_context: 'yes', used_evidence: 'yes', took_ownership: 'yes', accurate_diagnosis: 'yes',
     followed_process: 'yes', complete_resolution: 'yes', set_expectations: 'na', timely_handling: 'no',
+    verified_identity: 'yes', data_privacy: 'yes', no_unauthorized_promises: 'yes',
+  } as const;
+
+  const aiResponses = {
+    greeting: 'yes', empathy: 'yes', clarity: 'yes', respectful_tone: 'yes',
+    reviewed_context: 'yes', used_evidence: 'yes', took_ownership: 'yes', accurate_diagnosis: 'yes',
+    followed_process: 'yes', complete_resolution: 'yes', set_expectations: 'no', timely_handling: 'yes',
     verified_identity: 'yes', data_privacy: 'yes', no_unauthorized_promises: 'yes',
   } as const;
 
@@ -668,6 +682,22 @@ function seed(): SeedState {
         reviewerComments: '',
       },
       createdAt: '2026-07-14T02:00:00Z', updatedAt: '2026-07-14T02:10:00Z',
+    },
+    {
+      // tkt-bp-4 — Alex Cruz (l1_agent), a closed Business+ remittance query. An
+      // AI review with no supervisor review beside it. `reviewerId` is the
+      // placeholder `ai`: the record has no human owner. It does NOT take the
+      // ticket out of the supervisor queue, and a lead may still review it.
+      id: 'qr-seed-3', ticketId: 'tkt-bp-4', agentId: 'l1_agent', reviewerId: 'ai',
+      reviewType: 'ai', status: 'submitted', rubricVersion: 'v1',
+      responses: { ...aiResponses },
+      feedback: {
+        whatWentWell: 'Confirmed the remittance schedule against the linked order before replying.',
+        areasForImprovement: 'The closing reply left the next remittance date implicit.',
+        reviewerComments: '',
+      },
+      score: computeReviewScore({ ...aiResponses }),
+      createdAt: '2026-07-14T04:00:00Z', updatedAt: '2026-07-14T04:00:00Z', submittedAt: '2026-07-14T04:00:00Z',
     },
   ];
 

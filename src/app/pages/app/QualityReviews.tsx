@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import { listReviewable, listReviews } from '../../services/reviewService';
-import type { QualityReviewListItem, ReviewableTicket } from '../../models/review';
+import { reviewTypeOf, type QualityReviewListItem, type ReviewableTicket } from '../../models/review';
+import { ReviewTypeBadge } from '../../components/review/ReviewTypeBadge';
 import { useQuery } from '../../hooks/useQuery';
 import { simulatedNowMs } from '../../lib/clock';
 import { formatRelativeTime } from '../../lib/utils';
@@ -41,11 +42,16 @@ export function QualityReviews() {
   const allReviews = reviews.data ?? [];
   const allReviewable = reviewable.data ?? [];
 
+  // The three columns track SUPERVISOR review work. An AI review is an input to
+  // that work, not a stage of it, so it never occupies a column — it surfaces as a
+  // label on the ticket that still needs reviewing.
+  const supervisorReviews = allReviews.filter((r) => reviewTypeOf(r.review) === 'supervisor');
+
   // Option lists are derived from the data on screen, so a filter can never point
   // at a value that isn't present. Cheap to recompute; no memoization needed.
   const teamOptions = unique([...allReviews.map((r) => r.teamName), ...allReviewable.map((r) => r.teamName)]);
   const agentOptions = unique([...allReviews.map((r) => r.agentName), ...allReviewable.map((r) => r.agentName)]);
-  const reviewerOptions = unique(allReviews.map((r) => r.reviewerName));
+  const reviewerOptions = unique(supervisorReviews.map((r) => r.reviewerName));
 
   if (reviews.error || reviewable.error) return <ErrorState onRetry={() => { reviews.refetch(); reviewable.refetch(); }} />;
   if (reviews.loading || reviewable.loading) return <LoadingGrid count={3} />;
@@ -64,7 +70,7 @@ export function QualityReviews() {
       inDateRange(t.updatedAt),
   );
 
-  const drafts = allReviews.filter(
+  const drafts = supervisorReviews.filter(
     (r) =>
       r.review.status === 'draft' &&
       (!filters.team || r.teamName === filters.team) &&
@@ -73,7 +79,7 @@ export function QualityReviews() {
       inDateRange(r.review.updatedAt),
   );
 
-  const completed = allReviews.filter(
+  const completed = supervisorReviews.filter(
     (r) =>
       r.review.status === 'submitted' &&
       (!filters.team || r.teamName === filters.team) &&
@@ -210,7 +216,14 @@ function ReviewableTable({ items }: { items: ReviewableTicket[] }) {
           <td className="px-3 py-2.5 align-top">
             <Link to={`/app/reviews/${t.ticketId}`} className="font-medium text-accent-brand hover:underline">{t.reference}</Link>
           </td>
-          <td className="max-w-[240px] truncate px-3 py-2.5 align-top text-foreground" title={t.subject}>{t.subject}</td>
+          <td className="max-w-[240px] truncate px-3 py-2.5 align-top text-foreground" title={t.subject}>
+            <span className="flex items-center gap-2">
+              <span className="truncate">{t.subject}</span>
+              {/* An AI review already exists — shown so a lead knows there is
+                  context to read, never to suggest the review is done. */}
+              {t.aiReviewId && <Badge variant="teal">AI review</Badge>}
+            </span>
+          </td>
           <td className="px-3 py-2.5 align-top">
             <Link to={`/app/agents/${t.agentId}`} className="text-accent-brand hover:underline">{t.agentName}</Link>
           </td>
@@ -230,7 +243,7 @@ function ReviewTable({ items, kind }: { items: QualityReviewListItem[]; kind: 'd
   const now = simulatedNowMs();
   return (
     <TableShell
-      head={['Reference', 'Subject', 'Agent', 'Reviewer', kind === 'submitted' ? 'Score' : 'Updated', '']}
+      head={['Reference', 'Subject', 'Agent', 'Type', 'Reviewer', kind === 'submitted' ? 'Score' : 'Updated', '']}
     >
       {items.map((item) => {
         const { review } = item;
@@ -243,6 +256,7 @@ function ReviewTable({ items, kind }: { items: QualityReviewListItem[]; kind: 'd
             <td className="px-3 py-2.5 align-top">
               <Link to={`/app/agents/${review.agentId}`} className="text-accent-brand hover:underline">{item.agentName}</Link>
             </td>
+            <td className="px-3 py-2.5 align-top"><ReviewTypeBadge review={review} /></td>
             <td className="px-3 py-2.5 align-top text-muted-foreground">{item.reviewerName}</td>
             <td className="px-3 py-2.5 align-top">
               {kind === 'submitted' ? (

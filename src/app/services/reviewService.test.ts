@@ -8,7 +8,7 @@ import {
 } from './reviewService';
 import { computeReviewScore } from './reviewScoring';
 import { QUALITY_RUBRIC } from '../data/reviewRubric';
-import type { CriterionResponses } from '../models/review';
+import { reviewTypeOf, type CriterionResponses } from '../models/review';
 
 /** Answer every criterion Yes — a complete, submittable set. */
 function allYes(): CriterionResponses {
@@ -63,6 +63,8 @@ describe('drafts', () => {
     expect(draft.status).toBe('draft');
     expect(draft.agentId).toBe('l1_agent'); // never taken from the client
     expect(draft.reviewerId).toBe('team_lead');
+    // A manual draft is stored EXPLICITLY as a supervisor review.
+    expect(draft.reviewType).toBe('supervisor');
 
     // Re-opening the workspace returns the saved draft.
     const ws = await getReviewWorkspace('tkt-seed-5');
@@ -89,6 +91,7 @@ describe('submission', () => {
     const submitted = await submitReview({ ticketId: 'tkt-seed-4', reviewerId: 'team_lead', responses });
 
     expect(submitted.status).toBe('submitted');
+    expect(submitted.reviewType).toBe('supervisor'); // stored explicitly
     expect(submitted.rubricVersion).toBe('v1');
     expect(submitted.submittedAt).toEqual(expect.any(String));
     // The frozen score matches a fresh computation from the same responses.
@@ -98,5 +101,105 @@ describe('submission', () => {
     await expect(
       submitReview({ ticketId: 'tkt-seed-4', reviewerId: 'team_lead', responses }),
     ).rejects.toThrow(/already been reviewed/i);
+  });
+});
+
+describe('review types', () => {
+  it('reads reviews written before `reviewType` existed as supervisor reviews', async () => {
+    const reviews = await listReviews();
+    const submitted = reviews.find((r) => r.review.id === 'qr-seed-1')!;
+    const draft = reviews.find((r) => r.review.id === 'qr-seed-2')!;
+
+    // The seeded records carry no `reviewType` at all — they stand in for rows
+    // written before the field existed, and must still behave as supervisor work.
+    expect(submitted.review.reviewType).toBeUndefined();
+    expect(reviewTypeOf(submitted.review)).toBe('supervisor');
+    expect(reviewTypeOf(draft.review)).toBe('supervisor');
+  });
+
+  it('reads the seeded AI review as an AI review, named from its type', async () => {
+    const reviews = await listReviews();
+    const ai = reviews.find((r) => r.review.id === 'qr-seed-3')!;
+    expect(reviewTypeOf(ai.review)).toBe('ai');
+    // The reviewer label comes from the TYPE, never from a raw placeholder id.
+    expect(ai.reviewerName).toBe('AI reviewer');
+  });
+
+  it('keeps a supervisor draft resumable and stamps its type on the next save', async () => {
+    const before = await getReviewWorkspace('tkt-seed-7');
+    expect(before?.review?.id).toBe('qr-seed-2');
+    expect(before?.review?.status).toBe('draft');
+
+    // Resuming it updates the SAME record rather than starting a new one.
+    const resumed = await saveDraft({
+      ticketId: 'tkt-seed-7',
+      reviewerId: 'team_lead',
+      responses: { ...before!.review!.responses, clarity: 'yes' },
+    });
+    expect(resumed.id).toBe('qr-seed-2');
+    expect(resumed.status).toBe('draft');
+    expect(resumed.reviewType).toBe('supervisor');
+    expect(resumed.responses.clarity).toBe('yes');
+  });
+});
+
+/**
+ * tkt-bp-4 carries a seeded AI review and no supervisor review. These run in
+ * order against one store: the ticket is queued for review, a lead starts their
+ * own review of it, and only their SUBMITTED review takes it out of the queue.
+ */
+describe('an AI review coexists with a supervisor review', () => {
+  const AI_TICKET = 'tkt-bp-4';
+
+  it('does not remove the ticket from the supervisor queue', async () => {
+    const reviewable = await listReviewable();
+    const entry = reviewable.find((t) => t.ticketId === AI_TICKET);
+    // Still queued, and labelled so a lead knows AI context exists.
+    expect(entry).toBeDefined();
+    expect(entry?.aiReviewId).toBe('qr-seed-3');
+    expect(entry?.draftReviewId).toBeUndefined();
+  });
+
+  it('returns the AI review and the (absent) supervisor review separately', async () => {
+    const ws = await getReviewWorkspace(AI_TICKET);
+    expect(ws?.review).toBeNull(); // no supervisor review yet
+    expect(ws?.aiReview?.id).toBe('qr-seed-3');
+    expect(reviewTypeOf(ws!.aiReview!)).toBe('ai');
+  });
+
+  it('lets a lead start a supervisor review alongside the AI review', async () => {
+    const draft = await saveDraft({
+      ticketId: AI_TICKET,
+      reviewerId: 'team_lead',
+      responses: { empathy: 'no' }, // deliberately disagreeing with the AI
+    });
+    expect(draft.reviewType).toBe('supervisor');
+    expect(draft.id).not.toBe('qr-seed-3'); // a NEW record, not the AI one
+
+    // Both records exist on the ticket, in separate slots, neither overwritten.
+    const ws = await getReviewWorkspace(AI_TICKET);
+    expect(ws?.review?.id).toBe(draft.id);
+    expect(ws?.review?.responses.empathy).toBe('no');
+    expect(ws?.aiReview?.id).toBe('qr-seed-3');
+    expect(ws?.aiReview?.responses.empathy).toBe('yes'); // AI answers untouched
+  });
+
+  it('removes the ticket only once the SUPERVISOR review is submitted', async () => {
+    const submitted = await submitReview({
+      ticketId: AI_TICKET,
+      reviewerId: 'team_lead',
+      responses: allYes(),
+    });
+    expect(submitted.reviewType).toBe('supervisor');
+    expect(submitted.score?.percent).toBe(100);
+
+    const reviewable = await listReviewable();
+    expect(reviewable.map((t) => t.ticketId)).not.toContain(AI_TICKET);
+
+    // The AI review survives submission untouched, and both are still returned.
+    const ws = await getReviewWorkspace(AI_TICKET);
+    expect(ws?.review?.id).toBe(submitted.id);
+    expect(ws?.aiReview?.id).toBe('qr-seed-3');
+    expect(ws?.aiReview?.status).toBe('submitted');
   });
 });
