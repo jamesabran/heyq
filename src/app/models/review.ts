@@ -157,12 +157,22 @@ export const SUPERVISOR_REQUIRED_REASON_LABELS: Record<SupervisorRequiredReason,
 };
 
 /**
- * One criterion's AI answer. The rationale is what makes the score checkable
- * against the conversation — an unexplained AI score is not reviewable.
+ * One criterion's AI answer.
+ *
+ * `rationale` says why, `evidence` quotes the transcript it came from. Both are
+ * required: a supervisor has to be able to check an answer against what was
+ * actually said, and a rationale with nothing behind it is unverifiable.
+ *
+ * `confidence` (0–1) is displayed but deliberately NOT load-bearing — model
+ * self-reported confidence is poorly calibrated, so nothing about whether a
+ * supervisor review is required depends on it.
  */
 export interface AiFinding {
   value: CriterionValue;
   rationale: string;
+  /** A short verbatim excerpt from the conversation supporting the answer. */
+  evidence: string;
+  confidence?: number;
 }
 
 /** Why an AI review failed. `code` is stable for tests/telemetry; `message` is human. */
@@ -198,8 +208,11 @@ export interface AiReviewMeta {
  */
 export interface AiReviewConfig {
   enabled: boolean;
-  /** Integer 0–100, the same range as ReviewScore.percent. */
-  requireSupervisorBelowPercent: number;
+  /**
+   * An AI score BELOW this requires a supervisor review. Integer 0–100, the same
+   * range as ReviewScore.percent. Frozen onto each review as `thresholdPercent`.
+   */
+  thresholdPercent: number;
   model: string;
   promptVersion: string;
 }

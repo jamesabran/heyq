@@ -36,7 +36,7 @@ function answers(overrides: Record<string, CriterionValue> = {}): Record<string,
 const EIGHTY_ONE = answers({ greeting: 'no', used_evidence: 'no', took_ownership: 'no' });
 
 const setThreshold = (percent: number) => {
-  getStore(S).reviewConfig.requireSupervisorBelowPercent = percent;
+  getStore(S).reviewConfig.thresholdPercent = percent;
 };
 
 afterEach(() => {
@@ -82,11 +82,36 @@ describe('a successful run', () => {
     expect(stored.supervisorReviewRequired).toBe(review.supervisorReviewRequired);
   });
 
-  it('keeps a rationale for every criterion it answered', async () => {
+  it('persists a rationale, evidence and confidence for every criterion', async () => {
     const review = await runAiReview(S, 'tkt-seed-5');
     const findings = review.ai!.findings!;
     expect(Object.keys(findings)).toHaveLength(allCriteria(QUALITY_RUBRIC).length);
-    for (const finding of Object.values(findings)) expect(finding.rationale).not.toBe('');
+    for (const finding of Object.values(findings)) {
+      expect(finding.rationale).not.toBe('');
+      expect(finding.evidence).not.toBe('');
+      expect(finding.confidence).toEqual(expect.any(Number));
+    }
+  });
+
+  it('persists the findings to the store, not just the returned copy', async () => {
+    await runAiReview(S, 'tkt-seed-5');
+    const stored = latestAiReviewForTicket(getStore(S), 'tkt-seed-5')!;
+    expect(stored.ai?.findings?.greeting.evidence).toEqual(expect.any(String));
+    expect(stored.responses.greeting).toBeDefined();
+    expect(stored.score?.percent).toEqual(expect.any(Number));
+  });
+
+  it('refuses output with no evidence, however well-formed the rest is', async () => {
+    // Evidence is not decoration: an answer a supervisor cannot trace back to the
+    // conversation is refused outright rather than stored unverifiable.
+    const noEvidence = Object.fromEntries(
+      allCriteria(QUALITY_RUBRIC).map((c) => [c.id, { value: 'yes', rationale: 'Fine.' }]),
+    );
+    __setAiReviewProviderForTest(rawAiProvider(JSON.stringify({ findings: noEvidence })));
+    const review = await runAiReview(S, 'tkt-seed-8');
+    expect(review.ai?.status).toBe('failed');
+    expect(review.ai?.error?.code).toBe('missing_evidence');
+    expect(review.supervisorReviewRequired).toBe(true);
   });
 });
 

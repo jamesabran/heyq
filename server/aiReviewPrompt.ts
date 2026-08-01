@@ -31,8 +31,9 @@ import { CONCERN_TYPE_LABELS, STATUS_LABELS } from '../src/app/models/ticket.ts'
  */
 export const AI_ALLOWED_VALUES: CriterionValue[] = ['yes', 'no'];
 
-/** Rationales are stored, so they are bounded rather than trusted to be short. */
+/** Rationales and evidence are stored, so both are bounded rather than trusted to be short. */
 export const MAX_RATIONALE_LENGTH = 240;
+export const MAX_EVIDENCE_LENGTH = 240;
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,10 @@ const INSTRUCTIONS = [
   'Answer every criterion listed, using only the allowed values.',
   'Answer "yes" only when the standard was clearly met in the conversation.',
   'Give a one-sentence rationale for every answer, citing what the agent did.',
-  'Reply with JSON only, shaped as {"findings":{"<criterionId>":{"value":"yes|no","rationale":"..."}}}.',
+  'Quote a short excerpt from the conversation as evidence for every answer.',
+  'Optionally give a confidence between 0 and 1 for each answer.',
+  'Reply with JSON only, shaped as {"findings":{"<criterionId>":' +
+    '{"value":"yes|no","rationale":"...","evidence":"...","confidence":0.0}}}.',
 ].join(' ');
 
 /**
@@ -122,7 +126,9 @@ export type AiParseErrorCode =
   | 'unknown_criterion'
   | 'missing_criterion'
   | 'unsupported_value'
-  | 'missing_rationale';
+  | 'missing_rationale'
+  | 'missing_evidence'
+  | 'invalid_confidence';
 
 export type ParsedAiReview =
   | { ok: true; findings: Record<string, AiFinding> }
@@ -177,7 +183,7 @@ export function parseAiReview(raw: string, rubric: Rubric): ParsedAiReview {
       return fail('malformed_shape', `The answer for "${criterion.id}" is not an object.`);
     }
 
-    const { value, rationale } = entry;
+    const { value, rationale, evidence, confidence } = entry;
     if (typeof value !== 'string' || !(AI_ALLOWED_VALUES as string[]).includes(value)) {
       return fail(
         'unsupported_value',
@@ -187,10 +193,27 @@ export function parseAiReview(raw: string, rubric: Rubric): ParsedAiReview {
     if (typeof rationale !== 'string' || rationale.trim() === '') {
       return fail('missing_rationale', `The AI gave no rationale for "${criterion.id}".`);
     }
+    // Evidence is required: an answer a supervisor cannot trace back to what was
+    // actually said in the conversation is not one they can check.
+    if (typeof evidence !== 'string' || evidence.trim() === '') {
+      return fail('missing_evidence', `The AI cited no evidence for "${criterion.id}".`);
+    }
+    // Confidence is optional, but a present value must be a real 0–1 number
+    // rather than a string, a percentage, or NaN.
+    if (confidence !== undefined) {
+      if (typeof confidence !== 'number' || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+        return fail(
+          'invalid_confidence',
+          `"${criterion.id}" reported a confidence of ${String(confidence)} — expected a number between 0 and 1.`,
+        );
+      }
+    }
 
     findings[criterion.id] = {
       value: value as CriterionValue,
       rationale: rationale.trim().slice(0, MAX_RATIONALE_LENGTH),
+      evidence: evidence.trim().slice(0, MAX_EVIDENCE_LENGTH),
+      ...(confidence !== undefined ? { confidence } : {}),
     };
   }
 

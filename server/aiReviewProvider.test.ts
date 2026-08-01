@@ -46,6 +46,24 @@ describe('the fake provider', () => {
     expect(Object.keys(parsed.findings)).toHaveLength(allCriteria(QUALITY_RUBRIC).length);
   });
 
+  it('quotes real transcript lines as evidence, and reports a confidence', async () => {
+    const evidence = (await getTicketDetail('default', 'tkt-seed-5'))!;
+    const bodies = evidence.messages.map((m) => m.body);
+
+    const result = await fakeAiProvider.grade(await request('tkt-seed-5'));
+    if (result.status !== 'ok') throw new Error('expected ok');
+    const parsed = parseAiReview(result.raw, QUALITY_RUBRIC);
+    if (!parsed.ok) throw new Error('expected a valid parse');
+
+    for (const finding of Object.values(parsed.findings)) {
+      // Every excerpt traces back to something actually said in this ticket —
+      // fabricated evidence would defeat the point of showing it.
+      expect(bodies.some((b) => finding.evidence.includes(b.slice(0, 40)))).toBe(true);
+      expect(finding.confidence).toBeGreaterThan(0);
+      expect(finding.confidence).toBeLessThan(1); // a stand-in never claims certainty
+    }
+  });
+
   it('is deterministic — the same ticket always grades identically', async () => {
     const req = await request();
     const [a, b] = await Promise.all([fakeAiProvider.grade(req), fakeAiProvider.grade(req)]);

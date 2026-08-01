@@ -57,7 +57,7 @@ export const FAKE_AI_MODEL = 'heyq-fake-reviewer';
  */
 export const DEFAULT_REVIEW_CONFIG: AiReviewConfig = {
   enabled: true,
-  requireSupervisorBelowPercent: 80,
+  thresholdPercent: 80,
   model: FAKE_AI_MODEL,
   promptVersion: 'v1',
 };
@@ -680,28 +680,40 @@ function seed(): SeedState {
     verified_identity: 'yes', data_privacy: 'yes', no_unauthorized_promises: 'yes',
   } as const;
 
-  // Rationales for the seeded AI review — every criterion carries one, because an
-  // AI score a supervisor cannot check against the conversation is not reviewable.
-  const aiRationales: Record<string, string> = {
-    greeting: 'Opened with a branded greeting and the ticket reference.',
-    empathy: 'Acknowledged the delay in remittance and its cash-flow impact.',
-    clarity: 'Explained the remittance cycle without internal jargon.',
-    respectful_tone: 'Tone stayed courteous across the whole thread.',
-    reviewed_context: 'Read the linked order before the first reply.',
-    used_evidence: 'Quoted the remittance record to explain the amount.',
-    took_ownership: 'Followed the case through to the payout confirmation.',
-    accurate_diagnosis: 'Correctly identified a scheduling gap, not a shortfall.',
-    followed_process: 'Applied the standard remittance-query steps in order.',
-    complete_resolution: 'Confirmed the payout and closed with the reference.',
-    set_expectations: 'Did not state when the next remittance would land.',
-    timely_handling: 'First reply well inside the target window.',
-    verified_identity: 'Confirmed the requester against the account before details.',
-    data_privacy: 'Shared no card or bank detail beyond the masked reference.',
-    no_unauthorized_promises: 'Made no commitment outside the published schedule.',
+  // Rationales AND evidence for the seeded AI review. Every criterion carries
+  // both, because an AI answer a supervisor cannot trace back to something that
+  // was actually said is not one they can check. The excerpts below are quoted
+  // from tkt-bp-4's real two-message thread (a fuel-surcharge invoice query) —
+  // seeded evidence that cited a conversation the ticket does not have would
+  // demonstrate exactly the failure this phase exists to prevent.
+  const REQUESTER_LINE =
+    'requester: "Could you break down the fuel surcharge line on last month’s invoice?"';
+  const AGENT_LINE =
+    'agent: "Sent the itemised breakdown to your billing contact. Closing this out — reopen any time if you need more detail."';
+
+  const aiRationales: Record<string, [rationale: string, evidence: string]> = {
+    greeting: ['Replied directly to the request without a formal greeting line.', AGENT_LINE],
+    empathy: ['Acknowledged the billing question and acted on it.', REQUESTER_LINE],
+    clarity: ['Plain language, no internal billing jargon.', AGENT_LINE],
+    respectful_tone: ['Courteous throughout the thread.', AGENT_LINE],
+    reviewed_context: ['Answered the specific invoice line that was asked about.', REQUESTER_LINE],
+    used_evidence: ['Worked from the itemised invoice breakdown.', AGENT_LINE],
+    took_ownership: ['Sent the breakdown rather than redirecting the customer.', AGENT_LINE],
+    accurate_diagnosis: ['Correctly read this as an invoice itemisation request.', REQUESTER_LINE],
+    followed_process: ['Routed the breakdown to the registered billing contact.', AGENT_LINE],
+    complete_resolution: ['Provided the breakdown and closed with a reopen path.', AGENT_LINE],
+    set_expectations: ['Did not say when the breakdown would arrive.', AGENT_LINE],
+    timely_handling: ['Answered within a day of the request.', AGENT_LINE],
+    verified_identity: ['Sent details to the billing contact on file, not an ad-hoc address.', AGENT_LINE],
+    data_privacy: ['No card or bank details appear in the thread.', AGENT_LINE],
+    no_unauthorized_promises: ['Made no commitment about the surcharge itself.', AGENT_LINE],
   };
 
   const aiFindings: Record<string, AiFinding> = Object.fromEntries(
-    Object.entries(aiResponses).map(([id, value]) => [id, { value, rationale: aiRationales[id] }]),
+    Object.entries(aiResponses).map(([id, value]) => [
+      id,
+      { value, rationale: aiRationales[id][0], evidence: aiRationales[id][1], confidence: 0.82 },
+    ]),
   );
 
   const qualityReviews: QualityReview[] = [
@@ -734,7 +746,7 @@ function seed(): SeedState {
       createdAt: '2026-07-14T02:00:00Z', updatedAt: '2026-07-14T02:10:00Z',
     },
     {
-      // tkt-bp-4 — Alex Cruz (l1_agent), a closed Business+ remittance query. An
+      // tkt-bp-4 — Alex Cruz (l1_agent), a closed Business+ invoice query. An
       // AI review with no supervisor review beside it. `reviewerId` is the
       // placeholder `ai`: the record has no human owner. It does NOT take the
       // ticket out of the supervisor queue, and a lead may still review it.
@@ -745,8 +757,8 @@ function seed(): SeedState {
       reviewType: 'ai', status: 'submitted', rubricVersion: 'v1',
       responses: { ...aiResponses },
       feedback: {
-        whatWentWell: 'Confirmed the remittance schedule against the linked order before replying.',
-        areasForImprovement: 'The closing reply left the next remittance date implicit.',
+        whatWentWell: 'Answered the specific invoice line asked about and sent the itemised breakdown.',
+        areasForImprovement: 'The closing reply did not say when the breakdown would arrive.',
         reviewerComments: '',
       },
       score: computeReviewScore({ ...aiResponses }),

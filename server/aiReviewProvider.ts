@@ -37,10 +37,23 @@ export interface AiReviewProvider {
   grade(request: AiReviewRequest): Promise<AiGradeResult>;
 }
 
+interface FakeFinding {
+  value: CriterionValue;
+  rationale: string;
+  evidence: string;
+  confidence?: number;
+}
+
 /** Serialize findings the way a well-behaved model would answer the prompt. */
-function toRawResponse(answers: Record<string, { value: CriterionValue; rationale: string }>): string {
+function toRawResponse(answers: Record<string, FakeFinding>): string {
   return JSON.stringify({ findings: answers });
 }
+
+/** Truncate a transcript line to a quotable excerpt. */
+const excerpt = (body: string, max = 120): string => {
+  const clean = body.replace(/\s+/g, ' ').trim();
+  return clean.length > max ? `${clean.slice(0, max).trimEnd()}…` : clean;
+};
 
 /**
  * Deterministic stand-in grader. Answers every rubric criterion, deriving the
@@ -54,15 +67,28 @@ function toRawResponse(answers: Record<string, { value: CriterionValue; rational
 export const fakeAiProvider: AiReviewProvider = {
   id: 'fake',
   async grade({ prompt }) {
-    const answers: Record<string, { value: CriterionValue; rationale: string }> = {};
+    const answers: Record<string, FakeFinding> = {};
+    // Evidence is quoted from the REAL transcript the prompt carries, so the
+    // demo shows a supervisor exactly what it would show against a real model:
+    // an answer they can trace back to something that was actually said.
+    const lines = prompt.conversation.filter((m) => m.body.trim() !== '');
 
     for (const criterion of prompt.criteria) {
-      const met = criterion.zeroTolerance || hash(`${prompt.ticket.reference}:${criterion.id}`) % 6 !== 0;
+      const seed = hash(`${prompt.ticket.reference}:${criterion.id}`);
+      const met = criterion.zeroTolerance || seed % 6 !== 0;
+      const line = lines.length > 0 ? lines[seed % lines.length] : undefined;
+
       answers[criterion.id] = {
         value: met ? 'yes' : 'no',
         rationale: met
           ? `The conversation shows this standard met: ${lower(criterion.label)}.`
           : `No clear evidence in the conversation that the agent ${lower(criterion.label)}.`,
+        evidence: line
+          ? `${line.author}: "${excerpt(line.body)}"`
+          : 'No conversation content was available to quote.',
+        // Deterministic, and deliberately never 1.0 — a stand-in grader claiming
+        // certainty would misrepresent what this is.
+        confidence: Number((0.6 + ((seed % 35) / 100)).toFixed(2)),
       };
     }
 
@@ -97,7 +123,15 @@ export function scriptedAiProvider(
       const findings = Object.fromEntries(
         allCriteria(rubric)
           .filter((c) => answers[c.id] !== undefined)
-          .map((c) => [c.id, { value: answers[c.id], rationale: `Scripted answer for ${c.id}.` }]),
+          .map((c) => [
+            c.id,
+            {
+              value: answers[c.id],
+              rationale: `Scripted answer for ${c.id}.`,
+              evidence: `Scripted evidence for ${c.id}.`,
+              confidence: 0.9,
+            },
+          ]),
       );
       return { status: 'ok', raw: toRawResponse(findings), latencyMs: 0 };
     },

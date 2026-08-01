@@ -127,7 +127,7 @@ function finishSucceeded(
   const now = nowIso();
   const responses = findingsToResponses(findings);
   const score = computeReviewScore(responses);
-  const { required, reason } = decideSupervisorRequired(score, config.requireSupervisorBelowPercent);
+  const { required, reason } = decideSupervisorRequired(score, config.thresholdPercent);
 
   review.ai = { ...review.ai!, status: 'succeeded', completedAt: now, findings };
   review.responses = responses;
@@ -137,7 +137,7 @@ function finishSucceeded(
   // Frozen alongside rubricVersion: a later threshold change must never rewrite
   // the conclusion a completed review was recorded with.
   review.rubricVersion = QUALITY_RUBRIC.version;
-  review.thresholdPercent = config.requireSupervisorBelowPercent;
+  review.thresholdPercent = config.thresholdPercent;
   review.supervisorReviewRequired = required;
   review.supervisorReviewReason = reason;
   review.updatedAt = now;

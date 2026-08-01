@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AI_ALLOWED_VALUES,
+  MAX_EVIDENCE_LENGTH,
   MAX_RATIONALE_LENGTH,
   buildReviewPrompt,
   findingsToResponses,
@@ -22,7 +23,14 @@ const CRITERIA = allCriteria(QUALITY_RUBRIC);
 /** A complete, well-formed response — the baseline each rejection test breaks. */
 function validResponse(overrides: Record<string, unknown> = {}): string {
   const findings: Record<string, unknown> = {};
-  for (const c of CRITERIA) findings[c.id] = { value: 'yes', rationale: `Met: ${c.label}.` };
+  for (const c of CRITERIA) {
+    findings[c.id] = {
+      value: 'yes',
+      rationale: `Met: ${c.label}.`,
+      evidence: `agent: "…evidence for ${c.id}…"`,
+      confidence: 0.8,
+    };
+  }
   return JSON.stringify({ findings: { ...findings, ...overrides } });
 }
 
@@ -65,9 +73,16 @@ describe('parseAiReview — accepts', () => {
     expect(parsed.findings.greeting.value).toBe('yes');
   });
 
-  it('preserves a rationale for every criterion', () => {
+  it('preserves a rationale, evidence, and confidence for every criterion', () => {
     const parsed = parseAiReview(
-      validResponse({ empathy: { value: 'no', rationale: 'Never named the impact on the customer.' } }),
+      validResponse({
+        empathy: {
+          value: 'no',
+          rationale: 'Never named the impact on the customer.',
+          evidence: 'agent: "Your parcel is delayed."',
+          confidence: 0.55,
+        },
+      }),
       QUALITY_RUBRIC,
     );
     expect(parsed.ok).toBe(true);
@@ -75,13 +90,39 @@ describe('parseAiReview — accepts', () => {
     expect(parsed.findings.empathy).toEqual({
       value: 'no',
       rationale: 'Never named the impact on the customer.',
+      evidence: 'agent: "Your parcel is delayed."',
+      confidence: 0.55,
     });
-    for (const c of CRITERIA) expect(parsed.findings[c.id].rationale).not.toBe('');
+    for (const c of CRITERIA) {
+      expect(parsed.findings[c.id].rationale).not.toBe('');
+      expect(parsed.findings[c.id].evidence).not.toBe('');
+    }
+  });
+
+  it('accepts a finding with no confidence — it is optional', () => {
+    const parsed = parseAiReview(
+      validResponse({ clarity: { value: 'yes', rationale: 'Plain language.', evidence: 'agent: "…"' } }),
+      QUALITY_RUBRIC,
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.findings.clarity.confidence).toBeUndefined();
+    expect(parsed.findings.clarity.evidence).toBe('agent: "…"');
+  });
+
+  it('bounds an over-long evidence excerpt', () => {
+    const parsed = parseAiReview(
+      validResponse({ greeting: { value: 'yes', rationale: 'Fine.', evidence: 'y'.repeat(1000) } }),
+      QUALITY_RUBRIC,
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.findings.greeting.evidence).toHaveLength(MAX_EVIDENCE_LENGTH);
   });
 
   it('trims and bounds an over-long rationale rather than storing it whole', () => {
     const parsed = parseAiReview(
-      validResponse({ greeting: { value: 'yes', rationale: `  ${'x'.repeat(1000)}  ` } }),
+      validResponse({ greeting: { value: 'yes', rationale: `  ${'x'.repeat(1000)}  `, evidence: 'agent: "x"' } }),
       QUALITY_RUBRIC,
     );
     expect(parsed.ok).toBe(true);
@@ -148,15 +189,36 @@ describe('parseAiReview — rejects', () => {
   });
 
   it('an answer with no rationale', () => {
-    expect(reject(validResponse({ clarity: { value: 'yes' } })).code).toBe('missing_rationale');
-    expect(reject(validResponse({ clarity: { value: 'yes', rationale: '   ' } })).code).toBe('missing_rationale');
+    expect(reject(validResponse({ clarity: { value: 'yes', evidence: 'agent: "x"' } })).code).toBe(
+      'missing_rationale',
+    );
+    expect(
+      reject(validResponse({ clarity: { value: 'yes', rationale: '   ', evidence: 'agent: "x"' } })).code,
+    ).toBe('missing_rationale');
+  });
+
+  it('an answer with no evidence from the transcript', () => {
+    expect(reject(validResponse({ clarity: { value: 'yes', rationale: 'Clear.' } })).code).toBe('missing_evidence');
+    expect(reject(validResponse({ clarity: { value: 'yes', rationale: 'Clear.', evidence: ' ' } })).code).toBe(
+      'missing_evidence',
+    );
+  });
+
+  it('a confidence that is not a 0–1 number', () => {
+    const withConfidence = (confidence: unknown) =>
+      validResponse({ clarity: { value: 'yes', rationale: 'Clear.', evidence: 'agent: "x"', confidence } });
+
+    expect(reject(withConfidence(1.5)).code).toBe('invalid_confidence');
+    expect(reject(withConfidence(-0.1)).code).toBe('invalid_confidence');
+    expect(reject(withConfidence(80)).code).toBe('invalid_confidence'); // a percentage, not a ratio
+    expect(reject(withConfidence('high')).code).toBe('invalid_confidence');
   });
 });
 
 describe('findingsToResponses', () => {
   it('reduces findings to the answer map the scorer consumes', () => {
     const parsed = parseAiReview(
-      validResponse({ clarity: { value: 'no', rationale: 'Heavy jargon.' } }),
+      validResponse({ clarity: { value: 'no', rationale: 'Heavy jargon.', evidence: 'agent: "ETA per SLA T+2"' } }),
       QUALITY_RUBRIC,
     );
     if (!parsed.ok) throw new Error('expected a valid parse');

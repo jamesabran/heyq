@@ -272,6 +272,10 @@ describe('quality reviews — running an AI review', () => {
     // One rationale per criterion — an unexplained AI score is not reviewable.
     expect(within(findings).getAllByText(/the conversation shows this standard met/i).length).toBeGreaterThan(0);
     expect(within(findings).getAllByRole('listitem')).toHaveLength(15);
+    // …each backed by a quoted transcript excerpt and a confidence.
+    expect(within(findings).getAllByText(/^(requester|agent): "/).length).toBe(15);
+    expect(within(findings).getAllByText(/% confidence$/).length).toBe(15);
+    expect(provenance).toHaveTextContent(/average confidence/);
     // Re-running is offered once a review exists.
     expect(screen.getByRole('button', { name: /re-run ai review/i })).toBeInTheDocument();
   });

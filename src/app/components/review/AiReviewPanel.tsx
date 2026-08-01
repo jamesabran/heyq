@@ -1,6 +1,7 @@
 import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
 import {
   SUPERVISOR_REQUIRED_REASON_LABELS,
+  type AiFinding,
   type CriterionValue,
   type QualityReview,
 } from '../../models/review';
@@ -86,18 +87,29 @@ export function AiReviewPanel({
             <p className="text-sm text-muted-foreground">
               Generated {formatDateTime(review?.submittedAt ?? review?.updatedAt)} · {ai.model} · rubric{' '}
               {review?.rubricVersion} · prompt {ai.promptVersion}
-              {review?.thresholdPercent !== undefined && ` · threshold ${review.thresholdPercent}%`}. Check the findings
-              against the conversation before acting on them.
+              {review?.thresholdPercent !== undefined && ` · threshold ${review.thresholdPercent}%`}
+              {averageConfidence(ai.findings) !== null && ` · ${averageConfidence(ai.findings)}% average confidence`}.
+              Check the findings against the conversation before acting on them.
             </p>
             <CollapsibleSection title="AI findings" meta={`${Object.keys(ai.findings).length} criteria`}>
-              <ul className="flex flex-col gap-3">
+              <ul className="flex flex-col gap-4">
                 {Object.entries(ai.findings).map(([id, finding]) => (
                   <li key={id} className="flex flex-col gap-1">
-                    <span className="flex items-start gap-2 text-sm font-medium text-foreground">
+                    <span className="flex flex-wrap items-start gap-2 text-sm font-medium text-foreground">
                       <AnswerBadge value={finding.value} />
                       <span>{findCriterion(id)?.label ?? id}</span>
+                      {finding.confidence !== undefined && (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {Math.round(finding.confidence * 100)}% confidence
+                        </span>
+                      )}
                     </span>
                     <p className="pl-1 text-xs text-muted-foreground">{finding.rationale}</p>
+                    {/* The transcript excerpt the answer rests on, so a supervisor
+                        can check it without hunting through the conversation. */}
+                    <blockquote className="border-l-2 border-border pl-2 text-xs italic text-muted-foreground">
+                      {finding.evidence}
+                    </blockquote>
                   </li>
                 ))}
               </ul>
@@ -107,6 +119,20 @@ export function AiReviewPanel({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Mean self-reported confidence across the findings, as a percentage. Shown for
+ * context only — nothing about the score or whether a supervisor review is
+ * required depends on it, because model self-reported confidence is not
+ * calibrated enough to carry that weight.
+ */
+function averageConfidence(findings: Record<string, AiFinding>): number | null {
+  const values = Object.values(findings)
+    .map((f) => f.confidence)
+    .filter((c): c is number => typeof c === 'number');
+  if (values.length === 0) return null;
+  return Math.round((values.reduce((sum, c) => sum + c, 0) / values.length) * 100);
 }
 
 function AnswerBadge({ value }: { value: CriterionValue }) {
