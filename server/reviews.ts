@@ -52,7 +52,7 @@ const EMPTY_FEEDBACK: CoachingFeedback = { whatWentWell: '', areasForImprovement
  * record can never be reached through those paths. Records written before
  * `reviewType` existed read as supervisor reviews (`reviewTypeOf`).
  */
-function supervisorReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
+export function supervisorReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
   return store.qualityReviews.find((r) => r.ticketId === ticketId && reviewTypeOf(r) === 'supervisor');
 }
 
@@ -61,7 +61,7 @@ function supervisorReviewForTicket(store: Store, ticketId: string): QualityRevie
  * over its life (e.g. re-resolved after a reopen), so this reads the newest
  * rather than assuming one — the supervisor review is unaffected either way.
  */
-function latestAiReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
+export function latestAiReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
   return store.qualityReviews
     .filter((r) => r.ticketId === ticketId && reviewTypeOf(r) === 'ai')
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))

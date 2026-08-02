@@ -2,22 +2,20 @@ import { useCallback, useState } from 'react';
 import { useParams } from 'react-router';
 import {
   getReviewWorkspace,
+  runAiReview,
   saveDraft,
   submitReview,
 } from '../../services/reviewService';
-import type { CoachingFeedback, CriterionResponses, QualityReview } from '../../models/review';
+import type { CoachingFeedback, CriterionResponses } from '../../models/review';
 import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
 import { useIdentity } from '../../contexts/IdentityContext';
-import { formatDateTime } from '../../lib/utils';
 import { Alert } from '../../components/ui/Alert';
-import { Badge } from '../../components/ui/Badge';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
-import { Card, CardContent } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingGrid } from '../../components/help/HelpStates';
+import { AiReviewPanel } from '../../components/review/AiReviewPanel';
 import { EvidencePane } from '../../components/review/EvidencePane';
 import { ReviewForm } from '../../components/review/ReviewForm';
-import { ReviewTypeBadge } from '../../components/review/ReviewTypeBadge';
 
 /**
  * The review workspace — the shared destination of all three entry points
@@ -37,10 +35,16 @@ export function ReviewWorkspace() {
 
   const draftMutation = useMutation(saveDraft);
   const submitMutation = useMutation(submitReview);
+  const aiMutation = useMutation(runAiReview);
   const [savedNote, setSavedNote] = useState(false);
 
   if (workspace.error) return <ErrorState onRetry={workspace.refetch} />;
-  if (workspace.loading) return <LoadingGrid count={3} />;
+  // Only show the full-page loader while there is nothing for THIS ticket to
+  // show. A refetch triggered by an in-page action (saving a draft, running an
+  // AI review) must not unmount the form underneath the supervisor — that would
+  // silently discard answers they have typed but not yet saved. Navigating to a
+  // different ticket still loads, because the retained data is the old ticket's.
+  if (workspace.loading && data?.ticketId !== ticketId) return <LoadingGrid count={3} />;
   if (!data) return <EmptyState title="Ticket not found">This ticket doesn&apos;t exist.</EmptyState>;
 
   if (!data.agentId) {
@@ -64,6 +68,18 @@ export function ReviewWorkspace() {
   async function onSubmit(responses: CriterionResponses, feedback: CoachingFeedback) {
     await submitMutation.mutate({ ticketId, reviewerId: identity.id, responses, feedback });
     setSubmitted(true);
+    refresh();
+  }
+
+  /**
+   * Run the AI reviewer. This writes ONLY the ticket's AI review record, so the
+   * supervisor form below keeps whatever has been typed into it — nothing is
+   * copied across, and a failure changes nothing but the AI panel.
+   */
+  async function onRunAiReview() {
+    await aiMutation.mutate(ticketId, identity.id).catch(() => {
+      // Refused (disabled / not authorized) — surfaced by aiMutation.error below.
+    });
     refresh();
   }
 
@@ -98,7 +114,12 @@ export function ReviewWorkspace() {
         <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-4">
           {/* Any AI review sits ABOVE the form as read-only context. It never
               prefills the supervisor's answers — the two records stay separate. */}
-          {data.aiReview && <AiReviewSummary review={data.aiReview} />}
+          <AiReviewPanel
+            review={data.aiReview}
+            running={aiMutation.loading}
+            error={aiMutation.error?.message}
+            onRun={onRunAiReview}
+          />
           <ReviewForm
             review={data.review}
             reviewerName={identity.name}
@@ -111,36 +132,5 @@ export function ReviewWorkspace() {
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * A ticket's AI review, shown read-only beside the supervisor form. Deliberately
- * a summary, not a second form: it carries no controls, and the supervisor's own
- * assessment below it starts empty regardless of what the AI concluded.
- */
-function AiReviewSummary({ review }: { review: QualityReview }) {
-  const score = review.score;
-  const flagged = (score?.zeroToleranceFailures.length ?? 0) > 0;
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-2 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <ReviewTypeBadge review={review} />
-          <div className="flex items-center gap-1.5">
-            {score && (
-              <Badge variant={flagged ? 'destructive' : 'info'}>
-                {score.percent === null ? '—' : `${score.percent}%`}
-              </Badge>
-            )}
-            {flagged && <Badge variant="destructive">Flagged</Badge>}
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Generated {formatDateTime(review.submittedAt ?? review.updatedAt)} · rubric {review.rubricVersion}. This is
-          context for your review, not a substitute for it — check it against the conversation.
-        </p>
-      </CardContent>
-    </Card>
   );
 }

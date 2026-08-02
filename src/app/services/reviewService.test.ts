@@ -1,11 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   getReviewWorkspace,
   listReviewable,
   listReviews,
+  runAiReview,
   saveDraft,
   submitReview,
 } from './reviewService';
+import { ApiError } from '../lib/apiClient';
+// The test API server runs in THIS file's module registry (src/test/setup.ts),
+// so the store and provider seam reached over HTTP are the same instances.
+import { getStore } from '../../../server/store';
+import { DEFAULT_REVIEW_CONFIG } from '../../../server/seed';
+import {
+  unavailableAiProvider,
+  __resetAiReviewProviderForTest,
+  __setAiReviewProviderForTest,
+} from '../../../server/aiReviewProvider';
 import { computeReviewScore } from './reviewScoring';
 import { QUALITY_RUBRIC } from '../data/reviewRubric';
 import { reviewTypeOf, type CriterionResponses } from '../models/review';
@@ -201,5 +212,67 @@ describe('an AI review coexists with a supervisor review', () => {
     expect(ws?.review?.id).toBe(submitted.id);
     expect(ws?.aiReview?.id).toBe('qr-seed-3');
     expect(ws?.aiReview?.status).toBe('submitted');
+  });
+});
+
+/**
+ * The internal AI-run endpoint (POST /reviews/ai/run), exercised over real HTTP
+ * so the ROUTE's role check and disabled-refusal are proven — not just the
+ * orchestration underneath them.
+ */
+describe('POST /reviews/ai/run', () => {
+  afterEach(() => {
+    __resetAiReviewProviderForTest();
+    getStore('default').reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
+  });
+
+  it('runs a review for a team lead and returns the AI record', async () => {
+    const review = await runAiReview('tkt-seed-15', 'team_lead');
+    expect(review.reviewType).toBe('ai');
+    expect(review.ai?.status).toBe('succeeded');
+    expect(review.score?.percent).toEqual(expect.any(Number));
+  });
+
+  it('refuses a non-review role with 403, server-side', async () => {
+    // The button being hidden is a convenience; THIS is the control.
+    await expect(runAiReview('tkt-seed-15', 'l1_agent')).rejects.toMatchObject({ status: 403 });
+    await expect(runAiReview('tkt-seed-15', 'kb_editor')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('refuses an unknown or missing actor', async () => {
+    await expect(runAiReview('tkt-seed-15', 'nobody')).rejects.toMatchObject({ status: 403 });
+    await expect(runAiReview('tkt-seed-15', '')).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('refuses to run when AI reviews are disabled', async () => {
+    getStore('default').reviewConfig.enabled = false;
+    await expect(runAiReview('tkt-seed-15', 'team_lead')).rejects.toThrow(/disabled/i);
+  });
+
+  it('returns a failed record — not an HTTP error — when the provider is down', async () => {
+    // A model being unavailable is an AI outcome, not a broken request: the
+    // caller still gets a review record it can render.
+    __setAiReviewProviderForTest(unavailableAiProvider);
+    const review = await runAiReview('tkt-seed-16', 'team_lead');
+    expect(review.ai?.status).toBe('failed');
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('ai_failed');
+  });
+
+  it('surfaces the AI review through the workspace without touching the supervisor slot', async () => {
+    await runAiReview('tkt-seed-15', 'admin');
+    const ws = await getReviewWorkspace('tkt-seed-15');
+    expect(ws?.aiReview?.reviewType).toBe('ai');
+    expect(ws?.aiReview?.ai?.findings).toBeDefined();
+    // tkt-seed-15 has no supervisor review, and running the AI did not create one.
+    expect(ws?.review).toBeNull();
+  });
+
+  it('leaves the ticket in the supervisor queue after a successful AI run', async () => {
+    await runAiReview('tkt-seed-15', 'team_lead');
+    const reviewable = await listReviewable();
+    const entry = reviewable.find((t) => t.ticketId === 'tkt-seed-15');
+    expect(entry).toBeDefined();
+    expect(entry?.aiReviewId).toBeDefined();
   });
 });

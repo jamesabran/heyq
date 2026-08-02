@@ -122,6 +122,119 @@ export interface QualityReview {
   createdAt: string;
   updatedAt: string;
   submittedAt?: string;
+
+  // ── AI reviews only (reviewType === 'ai'); absent on supervisor records ────
+  /** How this review was produced, and whether it succeeded. */
+  ai?: AiReviewMeta;
+  /**
+   * Whether a supervisor must still review this ticket. FROZEN at write time
+   * together with `thresholdPercent`, so a later threshold change can never
+   * silently rewrite a completed review — the same convention as rubricVersion.
+   */
+  supervisorReviewRequired?: boolean;
+  supervisorReviewReason?: SupervisorRequiredReason;
+  /** The threshold this review was assessed against. */
+  thresholdPercent?: number;
+}
+
+// ── AI reviews ───────────────────────────────────────────────────────────────
+
+/**
+ * Where an AI review is in its lifecycle. Phase 1 runs synchronously on an
+ * explicit request, so a record is only ever briefly `running` — the state exists
+ * so the shape does not have to change when the run moves to a background job.
+ */
+export type AiProcessingStatus = 'running' | 'succeeded' | 'failed';
+
+/** Why a supervisor must still look at a ticket the AI has already reviewed. */
+export type SupervisorRequiredReason = 'low_score' | 'zero_tolerance' | 'ai_failed' | 'unscorable';
+
+export const SUPERVISOR_REQUIRED_REASON_LABELS: Record<SupervisorRequiredReason, string> = {
+  low_score: 'The AI score is below the review threshold.',
+  zero_tolerance: 'The AI reported a zero-tolerance finding.',
+  ai_failed: 'The AI reviewer could not complete this review.',
+  unscorable: 'The AI review produced nothing scorable.',
+};
+
+/**
+ * One criterion's AI answer.
+ *
+ * `rationale` says why, `evidence` quotes the transcript it came from. Both are
+ * required: a supervisor has to be able to check an answer against what was
+ * actually said, and a rationale with nothing behind it is unverifiable.
+ *
+ * `confidence` (0–1) is displayed but deliberately NOT load-bearing — model
+ * self-reported confidence is poorly calibrated, so nothing about whether a
+ * supervisor review is required depends on it.
+ */
+export interface AiFinding {
+  value: CriterionValue;
+  rationale: string;
+  /** A short verbatim excerpt from the conversation supporting the answer. */
+  evidence: string;
+  confidence?: number;
+}
+
+/** Why an AI review failed. `code` is stable for tests/telemetry; `message` is human. */
+export interface AiReviewError {
+  code: string;
+  message: string;
+}
+
+/**
+ * The AI-specific half of a review record. Everything a supervisor needs to judge
+ * whether the AI's assessment can be trusted: what produced it, when, and — when
+ * it failed — why.
+ */
+export interface AiReviewMeta {
+  /** Which provider produced this (`fake`, `huggingface`, …). */
+  provider: string;
+  model: string;
+  /**
+   * The resolved model revision, when the host reports one. Absent whenever it
+   * does not — never fabricated, since a wrong version on a frozen review is
+   * worse than no version.
+   */
+  modelVersion?: string;
+  /** Bumped when the prompt template changes — the prompt's analogue of rubricVersion. */
+  promptVersion: string;
+  status: AiProcessingStatus;
+  requestedAt: string;
+  completedAt?: string;
+  /** Round-trip time of the provider call, when it reported one. */
+  latencyMs?: number;
+  /** Per-criterion answers + rationales. Present only once succeeded. */
+  findings?: Record<string, AiFinding>;
+  /** Present only once failed. */
+  error?: AiReviewError;
+}
+
+/**
+ * Rolling health of the AI reviewer, updated after every provider attempt.
+ * Deliberately tiny: enough to tell "one blip" from "consistently broken",
+ * without becoming a metrics system inside an in-memory store.
+ */
+export interface AiHealth {
+  consecutiveFailures: number;
+  lastErrorCode?: string;
+  lastErrorAt?: string;
+  lastSuccessAt?: string;
+}
+
+/**
+ * Server-owned AI Review configuration. Lives in the store (server/seed.ts) and is
+ * read by the server on every run — never browser module state, and never an
+ * environment variable at decision time.
+ */
+export interface AiReviewConfig {
+  enabled: boolean;
+  /**
+   * An AI score BELOW this requires a supervisor review. Integer 0–100, the same
+   * range as ReviewScore.percent. Frozen onto each review as `thresholdPercent`.
+   */
+  thresholdPercent: number;
+  model: string;
+  promptVersion: string;
 }
 
 // ── View models (composed by the server for review screens) ──────────────────

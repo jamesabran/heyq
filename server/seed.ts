@@ -26,7 +26,7 @@ import type {
   TicketAttachment,
   TicketMessage,
 } from '../src/app/models/ticket.ts';
-import type { QualityReview } from '../src/app/models/review.ts';
+import type { AiFinding, AiHealth, AiReviewConfig, QualityReview } from '../src/app/models/review.ts';
 import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
 import type { Notification, NotificationEvent } from '../src/app/models/notification.ts';
 import type {
@@ -42,6 +42,46 @@ const BRAND = 'ggx';
 // is scoped to.
 export const BP_DEMO_USER = 'max@email.com';
 export const BP_DEMO_ORG = 'main';
+
+/**
+ * The Phase 1 stand-in model. Named so it can never be mistaken for a real hosted
+ * model in a screenshot or a stored record — the Hugging Face/Gemma identifier
+ * replaces this value when the real transport lands, with no other change.
+ */
+export const FAKE_AI_MODEL = 'heyq-fake-reviewer';
+
+/**
+ * The production model, used when the Hugging Face transport is selected.
+ *
+ * `google/gemma-4-12B-it` is NOT servable: it exists on the Hub but no Inference
+ * Provider deploys it, so a hosted call for it cannot be routed. 31B-it is the
+ * closest instruction-tuned Gemma 4 that is actually served, and it keeps the
+ * family's 140+ language coverage that the later Taglish work depends on.
+ */
+export const PRODUCTION_AI_MODEL = 'google/gemma-4-31B-it';
+
+/**
+ * AI Review defaults. 80% sits inside the board's existing 70–89 middle band —
+ * above the band the UI already treats as poor, below the 90+ band it treats as
+ * strong — so it flags middling handling without flooding supervisors.
+ *
+ * The default MODEL follows the selected transport: a review produced by the
+ * fake must not be stamped with a real model id, or the demo would store a claim
+ * that isn't true. Evaluated per store rather than at import so the environment
+ * is read at the same moment the provider is.
+ */
+export function defaultReviewConfig(): AiReviewConfig {
+  const usingHuggingFace = process.env.HEYQ_AI_PROVIDER?.trim().toLowerCase() === 'huggingface';
+  return {
+    enabled: true,
+    thresholdPercent: 80,
+    model: usingHuggingFace ? PRODUCTION_AI_MODEL : FAKE_AI_MODEL,
+    promptVersion: 'v1',
+  };
+}
+
+/** The defaults for the CURRENT environment. Kept for call sites that read a value. */
+export const DEFAULT_REVIEW_CONFIG: AiReviewConfig = defaultReviewConfig();
 
 export interface SeedState {
   requesters: Requester[];
@@ -60,6 +100,15 @@ export interface SeedState {
   // an agent handled a ticket. Kept in the same store because the workspace reads
   // ticket evidence and the review together; reviews never mutate ticket state.
   qualityReviews: QualityReview[];
+  /**
+   * AI Review configuration. Server-owned and read on every AI run, so the toggle
+   * and threshold cannot be bypassed from the browser. Deliberately NOT modelled
+   * on `slaConfig` (src/app/data/catalog.ts), which is browser module state the
+   * server never sees and therefore could not enforce.
+   */
+  reviewConfig: AiReviewConfig;
+  /** Rolling AI reviewer health, updated after every provider attempt. */
+  aiHealth: AiHealth;
   referenceSeq: number;
   // Notifications (ported from src/app/data/notifications.ts, M23/M24 — HeyQ is
   // the sole owner of ticket state, and emit() fires synchronously inside the
@@ -654,6 +703,42 @@ function seed(): SeedState {
     verified_identity: 'yes', data_privacy: 'yes', no_unauthorized_promises: 'yes',
   } as const;
 
+  // Rationales AND evidence for the seeded AI review. Every criterion carries
+  // both, because an AI answer a supervisor cannot trace back to something that
+  // was actually said is not one they can check. The excerpts below are quoted
+  // from tkt-bp-4's real two-message thread (a fuel-surcharge invoice query) —
+  // seeded evidence that cited a conversation the ticket does not have would
+  // demonstrate exactly the failure this phase exists to prevent.
+  const REQUESTER_LINE =
+    'requester: "Could you break down the fuel surcharge line on last month’s invoice?"';
+  const AGENT_LINE =
+    'agent: "Sent the itemised breakdown to your billing contact. Closing this out — reopen any time if you need more detail."';
+
+  const aiRationales: Record<string, [rationale: string, evidence: string]> = {
+    greeting: ['Replied directly to the request without a formal greeting line.', AGENT_LINE],
+    empathy: ['Acknowledged the billing question and acted on it.', REQUESTER_LINE],
+    clarity: ['Plain language, no internal billing jargon.', AGENT_LINE],
+    respectful_tone: ['Courteous throughout the thread.', AGENT_LINE],
+    reviewed_context: ['Answered the specific invoice line that was asked about.', REQUESTER_LINE],
+    used_evidence: ['Worked from the itemised invoice breakdown.', AGENT_LINE],
+    took_ownership: ['Sent the breakdown rather than redirecting the customer.', AGENT_LINE],
+    accurate_diagnosis: ['Correctly read this as an invoice itemisation request.', REQUESTER_LINE],
+    followed_process: ['Routed the breakdown to the registered billing contact.', AGENT_LINE],
+    complete_resolution: ['Provided the breakdown and closed with a reopen path.', AGENT_LINE],
+    set_expectations: ['Did not say when the breakdown would arrive.', AGENT_LINE],
+    timely_handling: ['Answered within a day of the request.', AGENT_LINE],
+    verified_identity: ['Sent details to the billing contact on file, not an ad-hoc address.', AGENT_LINE],
+    data_privacy: ['No card or bank details appear in the thread.', AGENT_LINE],
+    no_unauthorized_promises: ['Made no commitment about the surcharge itself.', AGENT_LINE],
+  };
+
+  const aiFindings: Record<string, AiFinding> = Object.fromEntries(
+    Object.entries(aiResponses).map(([id, value]) => [
+      id,
+      { value, rationale: aiRationales[id][0], evidence: aiRationales[id][1], confidence: 0.82 },
+    ]),
+  );
+
   const qualityReviews: QualityReview[] = [
     {
       // tkt-bp-3 — Alex Cruz (l1_agent) resolved a COD shortfall correctly, but a
@@ -684,19 +769,30 @@ function seed(): SeedState {
       createdAt: '2026-07-14T02:00:00Z', updatedAt: '2026-07-14T02:10:00Z',
     },
     {
-      // tkt-bp-4 — Alex Cruz (l1_agent), a closed Business+ remittance query. An
+      // tkt-bp-4 — Alex Cruz (l1_agent), a closed Business+ invoice query. An
       // AI review with no supervisor review beside it. `reviewerId` is the
       // placeholder `ai`: the record has no human owner. It does NOT take the
       // ticket out of the supervisor queue, and a lead may still review it.
+      // It scored 96% — comfortably above the 80% threshold — so no supervisor
+      // review is REQUIRED, which is precisely the case that must still leave the
+      // ticket open to one.
       id: 'qr-seed-3', ticketId: 'tkt-bp-4', agentId: 'l1_agent', reviewerId: 'ai',
       reviewType: 'ai', status: 'submitted', rubricVersion: 'v1',
       responses: { ...aiResponses },
       feedback: {
-        whatWentWell: 'Confirmed the remittance schedule against the linked order before replying.',
-        areasForImprovement: 'The closing reply left the next remittance date implicit.',
+        whatWentWell: 'Answered the specific invoice line asked about and sent the itemised breakdown.',
+        areasForImprovement: 'The closing reply did not say when the breakdown would arrive.',
         reviewerComments: '',
       },
       score: computeReviewScore({ ...aiResponses }),
+      ai: {
+        provider: 'fake', model: FAKE_AI_MODEL, promptVersion: 'v1',
+        status: 'succeeded',
+        requestedAt: '2026-07-14T04:00:00Z', completedAt: '2026-07-14T04:00:00Z',
+        findings: aiFindings,
+      },
+      supervisorReviewRequired: false,
+      thresholdPercent: 80,
       createdAt: '2026-07-14T04:00:00Z', updatedAt: '2026-07-14T04:00:00Z', submittedAt: '2026-07-14T04:00:00Z',
     },
   ];
@@ -814,6 +910,8 @@ function seed(): SeedState {
     requesterAccess,
     attachments: [],
     qualityReviews,
+    reviewConfig: defaultReviewConfig(),
+    aiHealth: { consecutiveFailures: 0 },
     // Running reference counter, seeded past the demo tickets.
     referenceSeq: 107,
     notifications,
