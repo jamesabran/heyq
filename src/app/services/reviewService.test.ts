@@ -74,10 +74,15 @@ describe('review workspace', () => {
   });
 });
 
+// tkt-seed-16 is CLOSED and assigned — a finished ticket, which is the only kind
+// a review applies to. These run in order against one store: a draft is started
+// on it, resumed, and finally submitted in `submission` below.
+const FINISHED_TICKET = 'tkt-seed-16';
+
 describe('drafts', () => {
   it('creates a draft with the agent locked to the ticket assignee', async () => {
     const draft = await saveDraft({
-      ticketId: 'tkt-seed-5',
+      ticketId: FINISHED_TICKET,
       reviewerId: 'team_lead',
       responses: { empathy: 'yes' },
       feedback: { whatWentWell: 'Quick to respond.', areasForImprovement: '', reviewerComments: '' },
@@ -89,9 +94,22 @@ describe('drafts', () => {
     expect(draft.reviewType).toBe('supervisor');
 
     // Re-opening the workspace returns the saved draft.
-    const ws = await getReviewWorkspace('tkt-seed-5');
+    const ws = await getReviewWorkspace(FINISHED_TICKET);
     expect(ws?.review?.id).toBe(draft.id);
     expect(ws?.review?.responses.empathy).toBe('yes');
+  });
+
+  it('resumes the same record on the next save rather than starting a new one', async () => {
+    const before = await getReviewWorkspace(FINISHED_TICKET);
+    const resumed = await saveDraft({
+      ticketId: FINISHED_TICKET,
+      reviewerId: 'team_lead',
+      responses: { ...before!.review!.responses, clarity: 'yes' },
+    });
+    expect(resumed.id).toBe(before!.review!.id);
+    expect(resumed.status).toBe('draft');
+    expect(resumed.reviewType).toBe('supervisor');
+    expect(resumed.responses.clarity).toBe('yes');
   });
 
   it('refuses to review a ticket with no assigned agent', async () => {
@@ -99,18 +117,27 @@ describe('drafts', () => {
       saveDraft({ ticketId: 'tkt-seed-3', reviewerId: 'team_lead', responses: {} }),
     ).rejects.toThrow(/no assigned agent/i);
   });
+
+  it('refuses to review a ticket that is still being worked', async () => {
+    // tkt-seed-4 is in progress. The agent has not finished handling it, so
+    // there is nothing to assess — and the server says so rather than relying on
+    // the UI having hidden the form.
+    await expect(
+      saveDraft({ ticketId: 'tkt-seed-4', reviewerId: 'team_lead', responses: { empathy: 'yes' } }),
+    ).rejects.toThrow(/resolve the ticket before reviewing it/i);
+  });
 });
 
 describe('submission', () => {
   it('blocks submission until every required criterion is answered', async () => {
     await expect(
-      submitReview({ ticketId: 'tkt-seed-16', reviewerId: 'team_lead', responses: { greeting: 'yes' } }),
+      submitReview({ ticketId: FINISHED_TICKET, reviewerId: 'team_lead', responses: { greeting: 'yes' } }),
     ).rejects.toThrow(/required/i);
   });
 
   it('freezes the score and rubric version on submit, then locks the review', async () => {
     const responses = { ...allYes(), set_expectations: 'na' as const, timely_handling: 'no' as const };
-    const submitted = await submitReview({ ticketId: 'tkt-seed-4', reviewerId: 'team_lead', responses });
+    const submitted = await submitReview({ ticketId: FINISHED_TICKET, reviewerId: 'team_lead', responses });
 
     expect(submitted.status).toBe('submitted');
     expect(submitted.reviewType).toBe('supervisor'); // stored explicitly
@@ -121,7 +148,7 @@ describe('submission', () => {
 
     // A submitted review is immutable — resubmitting is refused.
     await expect(
-      submitReview({ ticketId: 'tkt-seed-4', reviewerId: 'team_lead', responses }),
+      submitReview({ ticketId: FINISHED_TICKET, reviewerId: 'team_lead', responses }),
     ).rejects.toThrow(/already been reviewed/i);
   });
 });
@@ -147,21 +174,24 @@ describe('review types', () => {
     expect(ai.reviewerName).toBe('AI reviewer');
   });
 
-  it('keeps a supervisor draft resumable and stamps its type on the next save', async () => {
+  it('keeps a draft on a still-active ticket readable, but refuses to save over it', async () => {
+    // tkt-seed-7 carries a seeded draft and is still in progress — the shape a
+    // reopened ticket leaves behind. History is preserved and readable; only NEW
+    // review work is blocked.
     const before = await getReviewWorkspace('tkt-seed-7');
     expect(before?.review?.id).toBe('qr-seed-2');
     expect(before?.review?.status).toBe('draft');
 
-    // Resuming it updates the SAME record rather than starting a new one.
-    const resumed = await saveDraft({
-      ticketId: 'tkt-seed-7',
-      reviewerId: 'team_lead',
-      responses: { ...before!.review!.responses, clarity: 'yes' },
-    });
-    expect(resumed.id).toBe('qr-seed-2');
-    expect(resumed.status).toBe('draft');
-    expect(resumed.reviewType).toBe('supervisor');
-    expect(resumed.responses.clarity).toBe('yes');
+    await expect(
+      saveDraft({
+        ticketId: 'tkt-seed-7',
+        reviewerId: 'team_lead',
+        responses: { ...before!.review!.responses, clarity: 'yes' },
+      }),
+    ).rejects.toThrow(/resolve the ticket before reviewing it/i);
+
+    const after = await getReviewWorkspace('tkt-seed-7');
+    expect(after?.review).toEqual(before?.review); // untouched, not partially written
   });
 });
 
@@ -298,5 +328,40 @@ describe('POST /reviews/ai/run', () => {
     const entry = reviewable.find((t) => t.ticketId === 'tkt-seed-15');
     expect(entry).toBeDefined();
     expect(entry?.aiReviewId).toBeDefined();
+  });
+});
+
+/**
+ * Eligibility over real HTTP. The workspace hides these actions for an active
+ * ticket, but a request that never went near the UI must be refused just the
+ * same — the hidden button is a convenience, the server is the control.
+ */
+describe('eligibility cannot be bypassed by calling the API directly', () => {
+  // tkt-seed-4 is in progress and assigned; tkt-seed-1 is on hold and unassigned.
+  const ACTIVE = 'tkt-seed-4';
+
+  it('refuses an AI run', async () => {
+    await expect(runAiReview(ACTIVE, 'team_lead')).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringMatching(/resolve the ticket before reviewing it/i),
+    });
+  });
+
+  it('refuses a supervisor draft', async () => {
+    await expect(
+      saveDraft({ ticketId: ACTIVE, reviewerId: 'team_lead', responses: { empathy: 'yes' } }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('refuses a supervisor submission', async () => {
+    await expect(
+      submitReview({ ticketId: ACTIVE, reviewerId: 'team_lead', responses: allYes() }),
+    ).rejects.toThrow(/resolve the ticket before reviewing it/i);
+  });
+
+  it('leaves no trace of a refused request', async () => {
+    const ws = await getReviewWorkspace(ACTIVE);
+    expect(ws?.review).toBeNull();
+    expect(ws?.aiReview).toBeNull();
   });
 });

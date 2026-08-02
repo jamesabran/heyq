@@ -12,6 +12,8 @@ import {
   __resetAiReviewProviderForTest,
   __setAiReviewProviderForTest,
 } from '../../../../server/aiReviewProvider';
+import { __settleAiReviewsForTest } from '../../../../server/aiReview';
+import { resolveTicket } from '../../../../server/tickets';
 
 function renderApp(path: string, identityId = 'team_lead') {
   window.localStorage.setItem('heyq-identity', identityId);
@@ -23,6 +25,31 @@ function renderApp(path: string, identityId = 'team_lead') {
       </IdentityProvider>
     </ThemeProvider>,
   );
+}
+
+/**
+ * Resolve a ticket so it can be reviewed, and wait for whatever the resolution
+ * started to settle. Resolving is the ONLY way a ticket becomes reviewable, so
+ * these tests go through it rather than editing the store behind the app's back
+ * — and any automatic AI review it kicks off is part of what they then render.
+ *
+ * Resolving an already-resolved ticket is a no-op for the review side, so this
+ * is safe to call from more than one test against the same ticket.
+ */
+async function resolveForReview(ticketId: string) {
+  await resolveTicket('default', ticketId, 'l1_agent', 'solved');
+  await __settleAiReviewsForTest();
+}
+
+/**
+ * Resolve a ticket with the AI reviewer switched off for the deployment, so no
+ * automatic review is started and the panel begins empty — the state a manual
+ * "Run AI review" starts from.
+ */
+async function resolveWithoutAiReview(ticketId: string) {
+  delete process.env.HEYQ_AI_REVIEW_ENABLED;
+  await resolveForReview(ticketId);
+  process.env.HEYQ_AI_REVIEW_ENABLED = 'true';
 }
 
 /** Answer every scored criterion Yes so a review can be submitted. */
@@ -129,7 +156,7 @@ describe('quality reviews — entry points', () => {
 describe('quality reviews — workspace & scoring', () => {
   it('renders read-only evidence and a live score, and flags a zero-tolerance No', async () => {
     const user = userEvent.setup();
-    renderApp('/app/reviews/tkt-seed-5', 'team_lead');
+    renderApp('/app/reviews/tkt-seed-16', 'team_lead');
 
     // Evidence: the conversation is present and read-only (no reply composer).
     expect(await screen.findByRole('heading', { name: 'Conversation' })).toBeInTheDocument();
@@ -242,13 +269,47 @@ describe('quality reviews — AI and supervisor reviews are distinguishable', ()
 });
 
 /**
- * The Run AI review action and how its result is presented. tkt-seed-9 and
- * tkt-seed-11 have no AI review seeded, so each test starts from an empty panel.
+ * An ACTIVE ticket cannot be reviewed, and the workspace says so instead of
+ * offering actions that the server would refuse.
+ */
+describe('quality reviews — a ticket that is still being worked', () => {
+  it('offers no review actions, and says what has to happen first', async () => {
+    // tkt-seed-4 is in progress and assigned — reviewable in every way except
+    // the one that matters.
+    renderApp('/app/reviews/tkt-seed-4', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    expect(screen.getAllByText('Resolve the ticket before reviewing it.').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /run ai review/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /submit review/i })).not.toBeInTheDocument();
+    // The rubric is still readable as context, but not answerable.
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled();
+  });
+
+  it('shows the review the ticket already has, once it is resolved', async () => {
+    await resolveForReview('tkt-seed-4');
+    renderApp('/app/reviews/tkt-seed-4', 'team_lead');
+    await screen.findByRole('heading', { name: 'Conversation' });
+
+    // Resolving started the AI review on its own — nobody pressed anything.
+    expect(await screen.findByText(/\d+ of \d+ criteria passed\./)).toBeInTheDocument();
+    expect(screen.queryByText('Resolve the ticket before reviewing it.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /re-run ai review/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /save draft/i })).toBeEnabled();
+  });
+});
+
+/**
+ * The AI review card and the manual Re-run action. Each test resolves its own
+ * ticket first, because that is the only way a ticket becomes reviewable — and,
+ * where the AI reviewer is switched on, the only thing that starts a review.
  */
 describe('quality reviews — running an AI review', () => {
   afterEach(() => __resetAiReviewProviderForTest());
 
   it('offers the action to a reviewer, with no AI review yet', async () => {
+    await resolveWithoutAiReview('tkt-seed-17');
     renderApp('/app/reviews/tkt-seed-17', 'team_lead');
     await screen.findByRole('heading', { name: 'Conversation' });
 
@@ -256,8 +317,9 @@ describe('quality reviews — running an AI review', () => {
     expect(screen.getByText(/no ai review yet/i)).toBeInTheDocument();
   });
 
-  it('shows the AI score, rationales, and an AI label after a successful run', async () => {
+  it('shows the outcome a supervisor needs, and none of the machinery behind it', async () => {
     const user = userEvent.setup();
+    await resolveWithoutAiReview('tkt-seed-17');
     renderApp('/app/reviews/tkt-seed-17', 'team_lead');
     await screen.findByRole('heading', { name: 'Conversation' });
 
@@ -267,13 +329,24 @@ describe('quality reviews — running an AI review', () => {
     // panel itself and is present before a run has produced anything.
     await screen.findByText('AI findings');
 
-    // Labelled as AI-generated, with a score and the model that produced it.
-    expect(screen.getByText('AI review')).toBeInTheDocument();
-    // Provenance is on one line, so assert over the whole element's text.
-    const provenance = screen.getByText(/check the findings against the conversation/i);
-    expect(provenance).toHaveTextContent('heyq-fake-reviewer');
-    expect(provenance).toHaveTextContent('rubric v1');
-    expect(provenance).toHaveTextContent('threshold 80%');
+    // The outcome, in the order a supervisor reads it: what it is, what it
+    // scored, whether it passed, and a sentence saying what happened.
+    const card = screen.getByRole('region', { name: 'AI review' });
+    expect(within(card).getByText('AI review')).toBeInTheDocument();
+    expect(within(card).getByText(/^\d+%$/)).toBeInTheDocument();
+    expect(within(card).getByText(/^(Passed|Flagged)$/)).toBeInTheDocument();
+    expect(within(card).getByText(/\d+ of \d+ criteria passed\./)).toBeInTheDocument();
+    expect(within(card).getByText(/^Generated /)).toBeInTheDocument();
+
+    // None of the transport or configuration detail belongs in front of a
+    // supervisor — it is still stored on the record for audit and debugging.
+    expect(card).not.toHaveTextContent(/heyq-fake-reviewer/i);
+    expect(card).not.toHaveTextContent(/rubric v1/i);
+    expect(card).not.toHaveTextContent(/prompt v1/i);
+    expect(card).not.toHaveTextContent(/threshold/i);
+    expect(card).not.toHaveTextContent(/average confidence/i);
+    expect(card).not.toHaveTextContent(/hugging ?face/i);
+    expect(card).not.toHaveTextContent(/\bfake\b/i);
 
     // Per-criterion rationales are shown, not just a bare number. Scoped to the
     // findings list, since the criterion labels also appear in the form below.
@@ -285,32 +358,29 @@ describe('quality reviews — running an AI review', () => {
     // …each backed by a quoted transcript excerpt and a confidence.
     expect(within(findings).getAllByText(/^(requester|agent): "/).length).toBe(15);
     expect(within(findings).getAllByText(/% confidence$/).length).toBe(15);
-    expect(provenance).toHaveTextContent(/average confidence/);
     // Re-running is offered once a review exists.
     expect(screen.getByRole('button', { name: /re-run ai review/i })).toBeInTheDocument();
   });
 
-  it('shows a failure without breaking the workspace', async () => {
-    const user = userEvent.setup();
+  it('shows a failed run in plain operational terms, without breaking the workspace', async () => {
     __setAiReviewProviderForTest(unavailableAiProvider);
+    await resolveForReview('tkt-seed-10');
     renderApp('/app/reviews/tkt-seed-10', 'team_lead');
     await screen.findByRole('heading', { name: 'Conversation' });
 
-    await user.click(screen.getByRole('button', { name: /run ai review/i }));
-
     expect(await screen.findByText(/didn't complete/i)).toBeInTheDocument();
-    expect(screen.getByText(/ai reviewer is unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/no ai assessment is available/i)).toBeInTheDocument();
+    // The provider's own words stay on the stored record, not in front of a lead.
+    expect(screen.queryByText(/ai reviewer is unavailable/i)).not.toBeInTheDocument();
     // …and the supervisor can still do their own review.
     expect(screen.getByRole('button', { name: /save draft/i })).toBeEnabled();
   });
 
   it('states WHY a supervisor review is required when the AI fails', async () => {
-    const user = userEvent.setup();
     __setAiReviewProviderForTest(unavailableAiProvider);
+    await resolveForReview('tkt-bp-1');
     renderApp('/app/reviews/tkt-bp-1', 'team_lead');
     await screen.findByRole('heading', { name: 'Conversation' });
-
-    await user.click(screen.getByRole('button', { name: /run ai review/i }));
 
     expect(await screen.findByText(/supervisor review required/i)).toBeInTheDocument();
     expect(screen.getByText(/could not complete this review/i)).toBeInTheDocument();
@@ -318,6 +388,7 @@ describe('quality reviews — running an AI review', () => {
 
   it('leaves the supervisor form empty and independently editable', async () => {
     const user = userEvent.setup();
+    await resolveWithoutAiReview('tkt-bp-2');
     renderApp('/app/reviews/tkt-bp-2', 'team_lead');
     await screen.findByRole('heading', { name: 'Conversation' });
 

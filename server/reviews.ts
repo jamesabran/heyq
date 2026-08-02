@@ -36,6 +36,7 @@ import {
   type ReviewableTicket,
 } from '../src/app/models/review.ts';
 import { QUALITY_RUBRIC } from '../src/app/data/reviewRubric.ts';
+import { isReviewEligible, REVIEW_BLOCKED_MESSAGE } from '../src/app/services/reviewEligibility.ts';
 import { computeReviewScore, missingRequired } from '../src/app/services/reviewScoring.ts';
 import { clone, makeId, nowIso, simulateLatency } from '../src/app/lib/mock.ts';
 import { getStore, type Store } from './store.ts';
@@ -57,15 +58,27 @@ export function supervisorReviewForTicket(store: Store, ticketId: string): Quali
 }
 
 /**
- * The ticket's most recent AI review, if any. A ticket may accumulate several
- * over its life (e.g. re-resolved after a reopen), so this reads the newest
- * rather than assuming one — the supervisor review is unaffected either way.
+ * Every AI review a ticket has accumulated, oldest first — one per resolution
+ * cycle, plus any manual re-runs. Records are only ever appended, so this IS the
+ * ticket's AI review history: reopening a ticket and resolving it again adds to
+ * this list and never rewrites what is already in it.
+ *
+ * Insertion order is chronological within a store, so it is the tie-break when
+ * two records share a timestamp (`sort` is stable) — a re-run that lands in the
+ * same millisecond as the run before it still reads as the newer one.
  */
-export function latestAiReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
+export function aiReviewsForTicket(store: Store, ticketId: string): QualityReview[] {
   return store.qualityReviews
     .filter((r) => r.ticketId === ticketId && reviewTypeOf(r) === 'ai')
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .at(-1);
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/**
+ * The ticket's most recent AI review, if any — the one the workspace shows. The
+ * supervisor review is unaffected either way.
+ */
+export function latestAiReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
+  return aiReviewsForTicket(store, ticketId).at(-1);
 }
 
 function toListItem(store: Store, review: QualityReview): QualityReviewListItem {
@@ -179,6 +192,10 @@ function upsertDraft(store: Store, input: SaveReviewInput): QualityReview {
   const ticket = store.tickets.find((t) => t.id === input.ticketId);
   if (!ticket) throw new Error('Ticket not found');
   if (!ticket.assigneeId) throw new Error('This ticket has no assigned agent to review.');
+  // A review assesses FINISHED handling. Enforced here rather than in the HTTP
+  // layer so it holds for every caller, including a direct API request that
+  // never rendered the (already hidden) button.
+  if (!isReviewEligible(ticket)) throw new Error(REVIEW_BLOCKED_MESSAGE);
 
   const existing = supervisorReviewForTicket(store, input.ticketId);
   if (existing?.status === 'submitted') {
