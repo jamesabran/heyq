@@ -6,8 +6,8 @@
  * the threshold in force at the time, every failure mode falls back to requiring
  * a human, and none of it touches the manual review flow or the ticket.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { decideSupervisorRequired, runAiReview } from './aiReview.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { aiReviewsEnabled, decideSupervisorRequired, runAiReview } from './aiReview.ts';
 import {
   errorAiProvider,
   rawAiProvider,
@@ -40,12 +40,20 @@ const setThreshold = (percent: number) => {
   getStore(S).reviewConfig.thresholdPercent = percent;
 };
 
+// AI reviews are switched OFF by default (HEYQ_AI_REVIEW_ENABLED), so a test
+// that runs one opts in explicitly — exactly as a deployment has to. The
+// off-switch itself is covered in `the deployment off switch` below.
+beforeEach(() => {
+  process.env.HEYQ_AI_REVIEW_ENABLED = 'true';
+});
+
 afterEach(() => {
   __resetAiReviewProviderForTest();
   getStore(S).reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
   getStore(S).aiHealth = { consecutiveFailures: 0 };
   vi.unstubAllGlobals();
   delete process.env.HEYQ_HF_TOKEN;
+  delete process.env.HEYQ_AI_REVIEW_ENABLED;
 });
 
 describe('a successful run', () => {
@@ -456,6 +464,85 @@ describe('with the Hugging Face provider (fetch stubbed)', () => {
     const before = structuredClone(supervisorReviewForTicket(getStore(S), 'tkt-seed-7')!);
     await runAiReview(S, 'tkt-seed-7');
     expect(supervisorReviewForTicket(getStore(S), 'tkt-seed-7')).toEqual(before);
+  });
+});
+
+/**
+ * The deployment off switch. What matters is that OFF is the default and that a
+ * disabled run reaches no provider at all — not merely that it returns nothing
+ * useful.
+ */
+describe('the deployment off switch', () => {
+  /** Fails the test if anything asks it to grade. */
+  const forbiddenProvider = {
+    id: 'must-not-be-called',
+    grade: vi.fn(async () => {
+      throw new Error('the provider was called while AI reviews were disabled');
+    }),
+  };
+
+  it('is OFF unless the value is exactly "true"', () => {
+    for (const value of [undefined, '', 'false', 'TRUE ', 'yes', '1', 'enabled']) {
+      if (value === undefined) delete process.env.HEYQ_AI_REVIEW_ENABLED;
+      else process.env.HEYQ_AI_REVIEW_ENABLED = value;
+      // 'TRUE ' is trimmed and lowercased, so it IS accepted — everything else
+      // fails closed. Spelled out so the boundary is not a matter of guesswork.
+      expect(aiReviewsEnabled()).toBe(value === 'TRUE ');
+    }
+  });
+
+  it('does not call ANY provider when disabled', async () => {
+    delete process.env.HEYQ_AI_REVIEW_ENABLED;
+    __setAiReviewProviderForTest(forbiddenProvider);
+
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(forbiddenProvider.grade).not.toHaveBeenCalled();
+    expect(review.ai?.status).toBe('failed');
+  });
+
+  it('returns the ordinary failed record with a `disabled` code, rather than throwing', async () => {
+    delete process.env.HEYQ_AI_REVIEW_ENABLED;
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(review.reviewType).toBe('ai');
+    expect(review.ai?.error?.code).toBe('disabled');
+    expect(review.ai?.error?.message).toMatch(/switched off/i);
+    // Failing safe toward a human is the whole point of the controlled response.
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('ai_failed');
+    expect(review.score).toBeUndefined();
+  });
+
+  it('does not count being switched off against the reviewer’s health', async () => {
+    delete process.env.HEYQ_AI_REVIEW_ENABLED;
+    await runAiReview(S, 'tkt-seed-5');
+
+    // A model that is simply not switched on is not a model that is failing.
+    const health = getStore(S).aiHealth;
+    expect(health.consecutiveFailures).toBe(0);
+    expect(health.lastErrorCode).toBeUndefined();
+  });
+
+  it('grades normally once enabled — the switch is the only thing in the way', async () => {
+    process.env.HEYQ_AI_REVIEW_ENABLED = 'true';
+    const review = await runAiReview(S, 'tkt-seed-5');
+
+    expect(review.ai?.status).toBe('succeeded');
+    expect(review.ai?.error).toBeUndefined();
+    expect(review.score?.percent).toEqual(expect.any(Number));
+  });
+
+  it('leaves the supervisor’s own review untouched while disabled', async () => {
+    delete process.env.HEYQ_AI_REVIEW_ENABLED;
+    await saveDraft(S, { ticketId: 'tkt-seed-5', reviewerId: 'team_lead', responses: { greeting: 'yes' } });
+
+    await runAiReview(S, 'tkt-seed-5');
+
+    // The manual path is not the AI's to disturb, switched off or on.
+    const supervisor = supervisorReviewForTicket(getStore(S), 'tkt-seed-5');
+    expect(supervisor?.responses.greeting).toBe('yes');
+    expect(supervisor?.reviewType).toBe('supervisor');
   });
 });
 

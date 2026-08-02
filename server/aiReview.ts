@@ -44,6 +44,22 @@ export function getReviewConfig(storeId: string): AiReviewConfig {
 }
 
 /**
+ * The deployment-level off switch for AI Quality Reviews (`HEYQ_AI_REVIEW_ENABLED`).
+ *
+ * Defaults to DISABLED and only `true` turns it on: an unset, empty, or
+ * misspelled value fails CLOSED. Grading a ticket spends real inference and
+ * writes an opinion about a named agent's work, so that has to be something a
+ * deployment opts into rather than something it forgets to switch off.
+ *
+ * This is separate from the per-store `reviewConfig.enabled`, which is a product
+ * setting a store can hold; this is the operator's switch and outranks it. Read
+ * fresh on every run so flipping it takes effect without a restart.
+ */
+export function aiReviewsEnabled(): boolean {
+  return process.env.HEYQ_AI_REVIEW_ENABLED?.trim().toLowerCase() === 'true';
+}
+
+/**
  * Whether a supervisor must still review this ticket, and why.
  *
  * Zero tolerance outranks a low score: a compliance finding is the more serious
@@ -127,12 +143,20 @@ function recordHealth(store: Store, outcome: { ok: true } | { ok: false; code: s
   health.lastErrorAt = now;
 }
 
-/** Record a failed run. Always requires supervisor review — failing safe toward a human. */
+/**
+ * Record a failed run. Always requires supervisor review — failing safe toward a
+ * human.
+ *
+ * `countAgainstHealth` exists for the one failure that is not the reviewer's
+ * fault: being switched off is a deliberate operator decision, and counting it
+ * as a failure streak would report a perfectly healthy model as broken.
+ */
 function finishFailed(
   store: Store,
   review: QualityReview,
   error: AiReviewError,
   latencyMs?: number,
+  { countAgainstHealth = true }: { countAgainstHealth?: boolean } = {},
 ): QualityReview {
   const now = nowIso();
   review.ai = {
@@ -146,7 +170,7 @@ function finishFailed(
   review.supervisorReviewRequired = true;
   review.supervisorReviewReason = 'ai_failed';
   review.updatedAt = now;
-  recordHealth(store, { ok: false, code: error.code });
+  if (countAgainstHealth) recordHealth(store, { ok: false, code: error.code });
   return review;
 }
 
@@ -211,6 +235,26 @@ export async function runAiReview(storeId: string, ticketId: string): Promise<Qu
   if (!evidence) throw new Error('Ticket not found');
 
   const review = startRun(store, ticketId, ticket.assigneeId, config);
+
+  // Switched off for this deployment. Nothing is selected, no prompt is built,
+  // and no provider is asked for anything — the run stops here.
+  //
+  // It still produces the ordinary FAILED record rather than throwing, because
+  // "the AI did not assess this" is exactly what every other failure means to a
+  // caller: the workspace renders it, and the ticket still goes to a human. A
+  // throw would instead surface as a broken request for a deliberate setting.
+  if (!aiReviewsEnabled()) {
+    return clone(
+      finishFailed(
+        store,
+        review,
+        { code: 'disabled', message: 'AI Quality Reviews are switched off for this deployment.' },
+        undefined,
+        // Not the reviewer's fault, so it must not show up as a failure streak.
+        { countAgainstHealth: false },
+      ),
+    );
+  }
 
   // Everything from here is contained: no provider or parser outcome may throw
   // out of this function, because callers include ticket-adjacent flows.
