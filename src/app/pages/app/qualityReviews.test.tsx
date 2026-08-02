@@ -157,15 +157,47 @@ describe('quality reviews — entry points', () => {
   });
 
   it('entry point 3: ticket details offers Start quality review to reviewers only', async () => {
-    renderApp('/app/tickets/tkt-seed-8', 'team_lead');
-    await screen.findByRole('heading', { name: /question about my invoice/i });
+    // tkt-seed-16 is closed and assigned — finished handling, so the action is live.
+    renderApp('/app/tickets/tkt-seed-16', 'team_lead');
+    await screen.findByRole('heading', { name: /change my billing email/i });
     expect(screen.getByRole('link', { name: /start quality review/i })).toBeInTheDocument();
   });
 
-  it('entry point 3: hides Start quality review from a non-reviewer', async () => {
-    renderApp('/app/tickets/tkt-seed-8', 'l1_agent');
+  it('entry point 3: keeps the action on a resolved ticket', async () => {
+    renderApp('/app/tickets/tkt-seed-15', 'team_lead');
+    await screen.findByRole('heading', { name: /reschedule my delivery/i });
+    expect(screen.getByRole('link', { name: /start quality review/i })).toBeInTheDocument();
+  });
+
+  it('entry point 3: disables the action, with the reason, while the ticket is active', async () => {
+    // tkt-seed-8 is on hold and assigned. The action stays VISIBLE — a lead
+    // looking for it should learn what has to happen first, not wonder where it
+    // went — but it is disabled and no longer a link into the workspace.
+    renderApp('/app/tickets/tkt-seed-8', 'team_lead');
     await screen.findByRole('heading', { name: /question about my invoice/i });
+
+    const action = screen.getByRole('button', { name: /start quality review/i });
+    expect(action).toBeDisabled();
+    expect(action).toHaveAccessibleDescription('Resolve the ticket before reviewing it.');
+    expect(action).toHaveAttribute('title', 'Resolve the ticket before reviewing it.');
     expect(screen.queryByRole('link', { name: /start quality review/i })).not.toBeInTheDocument();
+  });
+
+  it('entry point 3: restores the action once the ticket is resolved', async () => {
+    await resolveForReview('tkt-seed-8');
+    renderApp('/app/tickets/tkt-seed-8', 'team_lead');
+    await screen.findByRole('heading', { name: /question about my invoice/i });
+
+    expect(screen.getByRole('link', { name: /start quality review/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start quality review/i })).not.toBeInTheDocument();
+  });
+
+  it('entry point 3: hides Start quality review from a non-reviewer', async () => {
+    // Hidden outright for a non-reviewer, on a ticket a reviewer could review.
+    renderApp('/app/tickets/tkt-seed-16', 'l1_agent');
+    await screen.findByRole('heading', { name: /change my billing email/i });
+    expect(screen.queryByRole('link', { name: /start quality review/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start quality review/i })).not.toBeInTheDocument();
   });
 });
 
