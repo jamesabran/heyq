@@ -135,17 +135,25 @@ function hasAutomaticReviewForCycle(store: Store, ticket: Ticket): boolean {
 }
 
 /**
- * Open a run: reuse the ticket's AI review when it belongs to the CURRENT
- * resolution cycle, otherwise append a new record.
+ * Open a run: reuse the ticket's AI review only when it EXPLICITLY belongs to the
+ * current resolution cycle, otherwise append a new record.
  *
  * Reusing within a cycle keeps a re-run from growing a pile of stale opinions
- * about one resolution. Appending across cycles is the rule that matters: a
- * ticket that was reopened and resolved again gets a new record, and everything
- * the AI said about the earlier cycle stays exactly where it was.
+ * about one resolution. Appending otherwise is the rule that matters, and it has
+ * two cases:
  *
- * A record written before cycles existed carries no `resolutionCycle`, so it is
- * treated as belonging to whatever cycle is current — the same convention as
- * `reviewType` and `trigger`.
+ *   - A record from an EARLIER cycle. The ticket was reopened and resolved
+ *     again; what the AI said the first time round stays exactly where it was.
+ *   - A record with NO `resolutionCycle` at all — written before cycles existed.
+ *     It is history, and history has no current cycle to belong to. Adopting it
+ *     into whatever cycle happens to be current would silently overwrite an old
+ *     assessment of an old resolution and relabel it as a new one, which is the
+ *     precise thing this feature promises never to do. So it is left alone, and
+ *     the run appends a properly tagged record beside it.
+ *
+ * That is deliberately unlike the `reviewType` / `trigger` defaults: those infer
+ * a value that was always true of the record. A cycle is not a property the
+ * record ever had, so there is nothing to infer.
  */
 function beginRun(store: Store, ticket: Ticket, config: AiReviewConfig, trigger: AiReviewTrigger): QualityReview {
   const now = nowIso();
@@ -161,7 +169,7 @@ function beginRun(store: Store, ticket: Ticket, config: AiReviewConfig, trigger:
   };
 
   const existing = latestAiReviewForTicket(store, ticket.id);
-  if (existing && (existing.ai?.resolutionCycle ?? cycle) === cycle) {
+  if (existing?.ai?.resolutionCycle === cycle) {
     existing.ai = meta;
     existing.status = 'draft';
     existing.responses = {};

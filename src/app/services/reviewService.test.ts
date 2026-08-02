@@ -49,13 +49,13 @@ describe('review listings', () => {
     expect(draft?.review.status).toBe('draft');
   });
 
-  it('lists assigned tickets to review, excludes submitted-reviewed ones, marks drafts', async () => {
+  it('lists finished assigned tickets, and excludes submitted-reviewed ones', async () => {
     const reviewable = await listReviewable();
     const ids = reviewable.map((t) => t.ticketId);
-    expect(ids).toContain('tkt-seed-10'); // assigned, no review
+    expect(ids).toContain('tkt-seed-15'); // resolved + assigned, no review
+    expect(ids).toContain('tkt-seed-16'); // closed + assigned, no review
     expect(ids).not.toContain('tkt-bp-3'); // already has a submitted review
-    // tkt-seed-7 carries a seeded draft, so it surfaces with a draftReviewId.
-    expect(reviewable.find((t) => t.ticketId === 'tkt-seed-7')?.draftReviewId).toBe('qr-seed-2');
+    expect(ids).not.toContain('tkt-seed-10'); // on hold — still being worked
   });
 
   it('scopes reviewable tickets to one agent', async () => {

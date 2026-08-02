@@ -105,6 +105,19 @@ describe('quality reviews — board', () => {
     expect(screen.getByRole('link', { name: 'HQ-2026-0007' })).toBeInTheDocument();
   });
 
+  it('offers only finished tickets in "To review"', async () => {
+    renderApp('/app/reviews', 'team_lead');
+    const queue = (await screen.findByRole('heading', { name: /to review/i })).closest('section')!;
+
+    // Resolved and closed tickets are the work on offer…
+    expect(within(queue).getByRole('link', { name: 'HQ-2026-0015' })).toBeInTheDocument();
+    expect(within(queue).getByRole('link', { name: 'HQ-2026-0016' })).toBeInTheDocument();
+    // …while tickets still being handled are not, whatever their state.
+    expect(within(queue).queryByRole('link', { name: 'HQ-2026-0005' })).not.toBeInTheDocument(); // open
+    expect(within(queue).queryByRole('link', { name: 'HQ-2026-0004' })).not.toBeInTheDocument(); // in progress
+    expect(within(queue).queryByRole('link', { name: 'HQ-2026-0010' })).not.toBeInTheDocument(); // on hold
+  });
+
   it('filters completed reviews by score band', async () => {
     const user = userEvent.setup();
     renderApp('/app/reviews', 'team_lead');
@@ -122,11 +135,13 @@ describe('quality reviews — entry points', () => {
     renderApp('/app/reviews', 'team_lead');
     await screen.findByRole('heading', { name: 'Quality Reviews' });
 
-    await user.click(await screen.findByRole('link', { name: 'HQ-2026-0005' }));
+    // HQ-2026-0015 (tkt-seed-15) is resolved and assigned — the queue only
+    // offers finished handling.
+    await user.click(await screen.findByRole('link', { name: 'HQ-2026-0015' }));
 
     expect(await screen.findByRole('heading', { name: /quality review/i })).toBeInTheDocument();
     // Ticket + agent are pre-filled: the reviewed agent is the ticket's assignee.
-    expect(screen.getByText(/reviewing alex cruz's handling of hq-2026-0005/i)).toBeInTheDocument();
+    expect(screen.getByText(/reviewing alex cruz's handling of hq-2026-0015/i)).toBeInTheDocument();
   });
 
   it('entry point 2: an agent profile lists the agent\'s tickets to review', async () => {
@@ -136,7 +151,8 @@ describe('quality reviews — entry points', () => {
     expect(await screen.findByRole('heading', { name: 'Alex Cruz' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /tickets to review/i })).toBeInTheDocument();
 
-    await user.click(await screen.findByRole('link', { name: 'HQ-2026-0008' }));
+    // HQ-2026-0016 (tkt-seed-16) is closed and assigned to this agent.
+    await user.click(await screen.findByRole('link', { name: 'HQ-2026-0016' }));
     expect(await screen.findByRole('heading', { name: /quality review/i })).toBeInTheDocument();
   });
 

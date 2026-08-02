@@ -314,13 +314,21 @@ describe('re-running', () => {
     expect(getStore(S).qualityReviews.filter((r) => r.ticketId === 'tkt-seed-5' && r.reviewType === 'ai')).toHaveLength(1);
   });
 
-  it('re-runs the SEEDED AI review without corrupting anything else', async () => {
+  it('re-runs beside the SEEDED AI review without corrupting anything else', async () => {
     const store = getStore(S);
     const supervisorBefore = structuredClone(store.qualityReviews.filter((r) => r.reviewType !== 'ai'));
+    // qr-seed-3 predates resolution cycles, so it carries no `resolutionCycle`.
+    const legacy = structuredClone(store.qualityReviews.find((r) => r.id === 'qr-seed-3')!);
+    expect(legacy.ai?.resolutionCycle).toBeUndefined();
 
     const rerun = await runAiReview(S, 'tkt-bp-4');
-    expect(rerun.id).toBe('qr-seed-3'); // the existing AI record, reused
+
+    // A NEW record, tagged with the cycle it actually belongs to — the legacy
+    // one is history and is not adopted into the current cycle.
+    expect(rerun.id).not.toBe('qr-seed-3');
     expect(rerun.ai?.status).toBe('succeeded');
+    expect(rerun.ai?.resolutionCycle).toEqual(expect.any(String));
+    expect(store.qualityReviews.find((r) => r.id === 'qr-seed-3')).toEqual(legacy);
 
     // Every supervisor record in the store is byte-for-byte unchanged.
     expect(store.qualityReviews.filter((r) => r.reviewType !== 'ai')).toEqual(supervisorBefore);

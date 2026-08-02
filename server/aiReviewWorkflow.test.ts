@@ -32,7 +32,14 @@ import {
   __resetAiReviewProviderForTest,
   __setAiReviewProviderForTest,
 } from './aiReviewProvider.ts';
-import { aiReviewsForTicket, latestAiReviewForTicket, saveDraft, submitReview } from './reviews.ts';
+import {
+  aiReviewsForTicket,
+  latestAiReviewForTicket,
+  listReviewable,
+  listReviews,
+  saveDraft,
+  submitReview,
+} from './reviews.ts';
 import { addRequesterMessage, reopenTicket, resolveTicket } from './tickets.ts';
 import { getStore, resetStore } from './store.ts';
 import { QUALITY_RUBRIC, allCriteria } from '../src/app/data/reviewRubric.ts';
@@ -286,6 +293,156 @@ describe('reopening a ticket', () => {
     await resolveAndSettle();
     await resolveAndSettle();
 
+    expect(aiReviews(TICKET)).toHaveLength(2);
+  });
+});
+
+/**
+ * The "Tickets to review" queue offers only work a supervisor is actually
+ * allowed to do. It is a READ, and it is not the control — the server still
+ * refuses an ineligible write (see above), which is what covers a direct link, a
+ * stale page, or a ticket reopened under someone who already had it open.
+ */
+describe('the review queue lists only reviewable tickets', () => {
+  const queueIds = async () => (await listReviewable(S)).map((t) => t.ticketId);
+
+  it('excludes tickets that are still being worked', async () => {
+    const ids = await queueIds();
+
+    expect(ids).not.toContain('tkt-seed-4'); // in progress
+    expect(ids).not.toContain('tkt-seed-5'); // open
+    expect(ids).not.toContain('tkt-seed-10'); // on hold
+    expect(ids).not.toContain('tkt-seed-7'); // in progress, and carries a draft
+    // Every ticket that IS listed is one a review may be written against.
+    const store = getStore(S);
+    for (const id of ids) {
+      const status = store.tickets.find((t) => t.id === id)!.status;
+      expect(['resolved', 'closed']).toContain(status);
+    }
+  });
+
+  it('lists resolved and closed tickets alike', async () => {
+    const ids = await queueIds();
+
+    expect(ids).toContain('tkt-seed-15'); // resolved
+    expect(ids).toContain('tkt-seed-16'); // closed
+  });
+
+  it('adds a ticket the moment it is resolved', async () => {
+    expect(await queueIds()).not.toContain(TICKET);
+    await resolveAndSettle();
+    expect(await queueIds()).toContain(TICKET);
+  });
+
+  it('scopes to one agent without letting an active ticket back in', async () => {
+    const forAgent = await listReviewable(S, 'l1_agent');
+    expect(forAgent.every((t) => t.agentId === 'l1_agent')).toBe(true);
+    expect(forAgent.map((t) => t.ticketId)).not.toContain('tkt-seed-4');
+  });
+
+  it('drops a reopened ticket from the queue while keeping its review history', async () => {
+    await resolveAndSettle();
+    await saveDraft(S, { ticketId: TICKET, reviewerId: 'team_lead', responses: { empathy: 'yes' } });
+    expect(await queueIds()).toContain(TICKET);
+    const reviewsBefore = structuredClone(
+      getStore(S).qualityReviews.filter((r) => r.ticketId === TICKET),
+    );
+    expect(reviewsBefore.length).toBe(2); // the automatic AI review + the draft
+
+    await reopenTicket(S, TICKET);
+
+    // Off the queue — there is no review work to offer while it is active…
+    expect(await queueIds()).not.toContain(TICKET);
+    // …but nothing was removed: every review it had is still stored, still
+    // listed, and still returned by the workspace.
+    expect(getStore(S).qualityReviews.filter((r) => r.ticketId === TICKET)).toEqual(reviewsBefore);
+    expect((await listReviews(S)).filter((r) => r.review.ticketId === TICKET)).toHaveLength(2);
+
+    // Resolving it again puts it back.
+    await resolveAndSettle();
+    expect(await queueIds()).toContain(TICKET);
+  });
+});
+
+/**
+ * AI reviews written before resolution cycles existed.
+ *
+ * A record with no `resolutionCycle` is HISTORY: it describes some earlier
+ * resolution nobody tagged. Treating it as part of whatever cycle happens to be
+ * current would let a later run reset its score, its findings and its
+ * supervisor-required conclusion in place — silently rewriting the past. So it
+ * is never reused, never relabelled, and never deleted; a run appends beside it.
+ */
+describe('a legacy AI review is never reused', () => {
+  /** Strip the cycle tag, leaving the record shaped as it was before cycles. */
+  function makeLegacy(ticketId: string): QualityReview {
+    const review = getStore(S).qualityReviews.find(
+      (r) => r.ticketId === ticketId && r.reviewType === 'ai',
+    )!;
+    delete review.ai!.resolutionCycle;
+    delete review.ai!.trigger;
+    return structuredClone(review);
+  }
+
+  it('appends a new tagged record on a re-run instead of overwriting it', async () => {
+    await resolveAndSettle();
+    const legacy = makeLegacy(TICKET);
+
+    __setAiReviewProviderForTest(scriptedAiProvider(answers({ greeting: 'no' })));
+    const rerun = await runAiReview(S, TICKET);
+
+    expect(rerun.id).not.toBe(legacy.id);
+    expect(rerun.ai?.resolutionCycle).toBe('cycle-1');
+    expect(rerun.ai?.trigger).toBe('manual');
+    // The legacy record is byte-for-byte what it was — score, findings and
+    // conclusion intact, and still untagged.
+    expect(aiReviews(TICKET).find((r) => r.id === legacy.id)).toEqual(legacy);
+    expect(aiReviews(TICKET)).toHaveLength(2);
+  });
+
+  it('appends rather than overwriting when a later resolution cycle grades the ticket', async () => {
+    await resolveAndSettle();
+    const legacy = makeLegacy(TICKET);
+
+    await reopenTicket(S, TICKET);
+    await resolveAndSettle();
+
+    expect(aiReviews(TICKET).find((r) => r.id === legacy.id)).toEqual(legacy);
+    expect(latestAiReviewForTicket(getStore(S), TICKET)?.ai?.resolutionCycle).toBe('cycle-2');
+    expect(aiReviews(TICKET)).toHaveLength(2);
+  });
+
+  it('does not count as this cycle\'s automatic review', async () => {
+    await resolveAndSettle();
+    makeLegacy(TICKET);
+
+    // The duplicate guard looks for an AUTOMATIC record tagged with this cycle.
+    // An untagged one is not that, so the ticket is treated as ungraded for the
+    // current cycle rather than skipped on the strength of a historical record.
+    startAutomaticAiReview(S, TICKET);
+    await __settleAiReviewsForTest();
+
+    const reviews = aiReviews(TICKET);
+    expect(reviews).toHaveLength(2);
+    expect(reviews[1].ai?.resolutionCycle).toBe('cycle-1');
+    expect(reviews[1].ai?.trigger).toBe('automatic');
+  });
+
+  it('still coalesces runs that DO belong to the same cycle', async () => {
+    await resolveAndSettle();
+    makeLegacy(TICKET);
+
+    // First run after the legacy record appends…
+    const first = await runAiReview(S, TICKET);
+    // …and every later run in the same cycle updates that record in place, so
+    // the append rule does not become "a new record every time".
+    const second = await runAiReview(S, TICKET);
+    const third = await runAiReview(S, TICKET);
+
+    expect(second.id).toBe(first.id);
+    expect(third.id).toBe(first.id);
+    expect(second.ai?.resolutionCycle).toBe('cycle-1');
+    // One legacy record and one for the current cycle — never a record per run.
     expect(aiReviews(TICKET)).toHaveLength(2);
   });
 });
