@@ -23,20 +23,27 @@ import { getTicketDetail } from './tickets.ts';
 
 const TOKEN = 'hf_test_token_value';
 
+/** The model these tests ask for — the one HeyQ actually configures. */
+const REQUESTED_MODEL = 'google/gemma-4-31B-it';
+
 async function request(): Promise<AiReviewRequest> {
   const evidence = (await getTicketDetail('default', 'tkt-seed-5'))!;
   return {
     prompt: buildReviewPrompt(evidence, { rubric: QUALITY_RUBRIC, promptVersion: 'v1', agentName: 'Alex Cruz' }),
-    model: 'google/gemma-2-9b-it',
+    model: REQUESTED_MODEL,
   };
 }
 
-/** A response the provider should accept. */
-const okResponse = (text: string, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify([{ generated_text: text }]), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json', ...headers },
-  });
+/** A chat-completions response the provider should accept. */
+const okResponse = (text: string, extra: Record<string, unknown> = {}) =>
+  new Response(
+    JSON.stringify({
+      id: 'chatcmpl-1',
+      choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: text } }],
+      ...extra,
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
 
 const errorResponse = (status: number) =>
   new Response(JSON.stringify({ error: 'upstream detail' }), {
@@ -71,28 +78,56 @@ describe('a successful call', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('posts to the CONFIGURED model and sends the token only as a bearer header', async () => {
+  it('calls the router chat-completions endpoint with the model in the BODY', async () => {
     fetchMock.mockResolvedValue(okResponse('{}'));
     await huggingFaceAiProvider.grade(await request());
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('google/gemma-2-9b-it');
+    // The old api-inference host is no longer supported; the model now travels
+    // in the payload rather than the path.
+    expect(String(url)).toBe('https://router.huggingface.co/v1/chat/completions');
+    expect(String(url)).not.toContain('api-inference');
+
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe(REQUESTED_MODEL);
+    expect(body.messages).toEqual([{ role: 'user', content: expect.any(String) }]);
+    expect(body.stream).toBe(false);
+  });
+
+  it('sends the token only as a bearer header', async () => {
+    fetchMock.mockResolvedValue(okResponse('{}'));
+    await huggingFaceAiProvider.grade(await request());
+
+    const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).not.toContain(TOKEN); // never in the URL
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
     expect(init.body).not.toContain(TOKEN); // never in the body
     expect(init.signal).toBeDefined(); // bounded by an abort signal
   });
 
-  it('captures a model revision when the host reports one', async () => {
-    fetchMock.mockResolvedValue(okResponse('{}', { 'x-repo-commit': 'abc123def' }));
+  it('captures system_fingerprint as the model version when present', async () => {
+    fetchMock.mockResolvedValue(okResponse('{}', { system_fingerprint: 'fp_novita_1a2b' }));
     const result = await huggingFaceAiProvider.grade(await request());
-    expect(result.status === 'ok' && result.modelVersion).toBe('abc123def');
+    expect(result.status === 'ok' && result.modelVersion).toBe('fp_novita_1a2b');
   });
 
-  it('leaves the model version UNSET when the host reports none', async () => {
+  it('captures the RESOLVED model when routing served a different one', async () => {
+    fetchMock.mockResolvedValue(okResponse('{}', { model: 'google/gemma-4-26B-A4B-it' }));
+    const result = await huggingFaceAiProvider.grade(await request());
+    expect(result.status === 'ok' && result.modelVersion).toBe('google/gemma-4-26B-A4B-it');
+  });
+
+  it('leaves the model version UNSET when the body only echoes what we asked for', async () => {
+    // An echo is not a version. Inventing one would put a false claim on a
+    // frozen review, which is worse than recording nothing.
+    fetchMock.mockResolvedValue(okResponse('{}', { model: REQUESTED_MODEL }));
+    const result = await huggingFaceAiProvider.grade(await request());
+    expect(result.status === 'ok' && result.modelVersion).toBeUndefined();
+  });
+
+  it('leaves the model version UNSET when the body reports neither', async () => {
     fetchMock.mockResolvedValue(okResponse('{}'));
     const result = await huggingFaceAiProvider.grade(await request());
-    // Inventing a version would put a false claim on a frozen review.
     expect(result.status === 'ok' && result.modelVersion).toBeUndefined();
   });
 });
@@ -183,9 +218,34 @@ describe('invalid provider responses', () => {
     expect(result.status === 'error' && result.code).toBe('invalid_response');
   });
 
-  it('refuses a JSON body with no generated text', async () => {
+  it('refuses a JSON body with no choices', async () => {
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify([{ something_else: 'x' }]), {
+      new Response(JSON.stringify({ id: 'x', choices: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const result = await huggingFaceAiProvider.grade(await request());
+    expect(result.status === 'error' && result.code).toBe('invalid_response');
+  });
+
+  it('refuses a choice with no message content', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ index: 0, finish_reason: 'stop' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const result = await huggingFaceAiProvider.grade(await request());
+    expect(result.status === 'error' && result.code).toBe('invalid_response');
+  });
+
+  it('refuses the LEGACY text-generation shape, rather than silently accepting it', async () => {
+    // `[{generated_text}]` is what the retired api-inference host returned. If it
+    // ever comes back, that means we are talking to the wrong endpoint — which
+    // should surface, not be quietly tolerated.
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify([{ generated_text: '{"findings":{}}' }]), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -285,17 +345,23 @@ describe('prompt serialization and helpers', () => {
     expect(input).not.toContain('na,');
   });
 
-  it('extracts generated text from both response shapes', () => {
-    expect(extractGeneratedText([{ generated_text: 'a' }])).toBe('a');
-    expect(extractGeneratedText({ generated_text: 'b' })).toBe('b');
-    expect(extractGeneratedText([{}])).toBeNull();
+  it('extracts the assistant message from a chat-completions body', () => {
+    expect(extractGeneratedText({ choices: [{ message: { content: 'a' } }] })).toBe('a');
+    expect(extractGeneratedText({ choices: [{ message: { content: '  ' } }] })).toBeNull();
+    expect(extractGeneratedText({ choices: [{ message: {} }] })).toBeNull();
+    expect(extractGeneratedText({ choices: [] })).toBeNull();
+    expect(extractGeneratedText([{ generated_text: 'legacy' }])).toBeNull();
     expect(extractGeneratedText('nope')).toBeNull();
     expect(extractGeneratedText(null)).toBeNull();
   });
 
-  it('reads a revision header, unquoting an etag', () => {
-    expect(readModelVersion(new Headers({ etag: '"deadbeef"' }))).toBe('deadbeef');
-    expect(readModelVersion(new Headers({ 'x-model-revision': 'r1' }))).toBe('r1');
-    expect(readModelVersion(new Headers())).toBeUndefined();
+  it('reads the model version from the body, never from an echo', () => {
+    expect(readModelVersion({ system_fingerprint: 'fp1' }, 'm')).toBe('fp1');
+    expect(readModelVersion({ model: 'other/model' }, 'm')).toBe('other/model');
+    expect(readModelVersion({ model: 'm' }, 'm')).toBeUndefined(); // an echo is not a version
+    expect(readModelVersion({}, 'm')).toBeUndefined();
+    expect(readModelVersion(null, 'm')).toBeUndefined();
+    // A fingerprint wins over the model id when both are present.
+    expect(readModelVersion({ system_fingerprint: 'fp1', model: 'other/model' }, 'm')).toBe('fp1');
   });
 });

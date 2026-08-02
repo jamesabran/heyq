@@ -20,7 +20,7 @@ import {
 import { huggingFaceAiProvider } from './aiReviewHuggingFace.ts';
 import { latestAiReviewForTicket, listReviewable, saveDraft, supervisorReviewForTicket } from './reviews.ts';
 import { getStore } from './store.ts';
-import { DEFAULT_REVIEW_CONFIG, FAKE_AI_MODEL } from './seed.ts';
+import { DEFAULT_REVIEW_CONFIG, FAKE_AI_MODEL, PRODUCTION_AI_MODEL, defaultReviewConfig } from './seed.ts';
 import { QUALITY_RUBRIC, allCriteria } from '../src/app/data/reviewRubric.ts';
 import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
 import type { CriterionValue, ReviewScore } from '../src/app/models/review.ts';
@@ -357,11 +357,15 @@ describe('AI reviewer health', () => {
  * downstream: same parser, same scorer, same freezing, same flags.
  */
 describe('with the Hugging Face provider (fetch stubbed)', () => {
-  const hfResponse = (body: unknown, headers: Record<string, string> = {}) =>
-    new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...headers },
-    });
+  const hfResponse = (text: string, extra: Record<string, unknown> = {}) =>
+    new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: text } }],
+        ...extra,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
 
   /** A model reply that answers every criterion properly. */
   function modelReply(overrides: Record<string, CriterionValue> = {}): string {
@@ -379,23 +383,23 @@ describe('with the Hugging Face provider (fetch stubbed)', () => {
     return JSON.stringify({ findings });
   }
 
-  function stubHuggingFace(text: string, headers: Record<string, string> = {}) {
+  function stubHuggingFace(text: string, extra: Record<string, unknown> = {}) {
     process.env.HEYQ_HF_TOKEN = 'hf_test_token';
     __setAiReviewProviderForTest(huggingFaceAiProvider);
-    const fetchMock = vi.fn().mockResolvedValue(hfResponse([{ generated_text: text }], headers));
+    const fetchMock = vi.fn().mockResolvedValue(hfResponse(text, extra));
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }
 
   it('produces a scored, frozen review from a real-provider-shaped response', async () => {
-    const fetchMock = stubHuggingFace(modelReply(), { 'x-repo-commit': 'sha-9f2' });
+    const fetchMock = stubHuggingFace(modelReply(), { system_fingerprint: 'fp_novita_1a2b' });
 
     const review = await runAiReview(S, 'tkt-seed-5');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(review.ai?.provider).toBe('huggingface');
     expect(review.ai?.status).toBe('succeeded');
-    expect(review.ai?.modelVersion).toBe('sha-9f2');
+    expect(review.ai?.modelVersion).toBe('fp_novita_1a2b');
     expect(review.ai?.latencyMs).toEqual(expect.any(Number));
     // The configured model is used as given — the transport substitutes nothing.
     expect(review.ai?.model).toBe(DEFAULT_REVIEW_CONFIG.model);
@@ -452,5 +456,35 @@ describe('with the Hugging Face provider (fetch stubbed)', () => {
     const before = structuredClone(supervisorReviewForTicket(getStore(S), 'tkt-seed-7')!);
     await runAiReview(S, 'tkt-seed-7');
     expect(supervisorReviewForTicket(getStore(S), 'tkt-seed-7')).toEqual(before);
+  });
+});
+
+describe('the default model configuration', () => {
+  afterEach(() => delete process.env.HEYQ_AI_PROVIDER);
+
+  it('uses the fake model id while the fake transport is selected', () => {
+    // A review produced by the stand-in must never be stamped with a real model
+    // id — a stored record would then claim something untrue.
+    expect(defaultReviewConfig().model).toBe(FAKE_AI_MODEL);
+  });
+
+  it('uses the production Gemma model when Hugging Face is selected', () => {
+    process.env.HEYQ_AI_PROVIDER = 'huggingface';
+    expect(defaultReviewConfig().model).toBe(PRODUCTION_AI_MODEL);
+    // google/gemma-4-12B-it is on the Hub but no Inference Provider deploys it,
+    // so a hosted call for it cannot be routed. 31B-it is the closest served
+    // instruction-tuned Gemma 4.
+    expect(PRODUCTION_AI_MODEL).toBe('google/gemma-4-31B-it');
+  });
+
+  it('leaves the threshold and prompt version alone either way', () => {
+    process.env.HEYQ_AI_PROVIDER = 'huggingface';
+    const production = defaultReviewConfig();
+    delete process.env.HEYQ_AI_PROVIDER;
+    const fake = defaultReviewConfig();
+
+    expect(production.thresholdPercent).toBe(fake.thresholdPercent);
+    expect(production.promptVersion).toBe(fake.promptVersion);
+    expect(production.enabled).toBe(fake.enabled);
   });
 });

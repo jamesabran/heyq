@@ -51,16 +51,37 @@ export const BP_DEMO_ORG = 'main';
 export const FAKE_AI_MODEL = 'heyq-fake-reviewer';
 
 /**
+ * The production model, used when the Hugging Face transport is selected.
+ *
+ * `google/gemma-4-12B-it` is NOT servable: it exists on the Hub but no Inference
+ * Provider deploys it, so a hosted call for it cannot be routed. 31B-it is the
+ * closest instruction-tuned Gemma 4 that is actually served, and it keeps the
+ * family's 140+ language coverage that the later Taglish work depends on.
+ */
+export const PRODUCTION_AI_MODEL = 'google/gemma-4-31B-it';
+
+/**
  * AI Review defaults. 80% sits inside the board's existing 70–89 middle band —
  * above the band the UI already treats as poor, below the 90+ band it treats as
  * strong — so it flags middling handling without flooding supervisors.
+ *
+ * The default MODEL follows the selected transport: a review produced by the
+ * fake must not be stamped with a real model id, or the demo would store a claim
+ * that isn't true. Evaluated per store rather than at import so the environment
+ * is read at the same moment the provider is.
  */
-export const DEFAULT_REVIEW_CONFIG: AiReviewConfig = {
-  enabled: true,
-  thresholdPercent: 80,
-  model: FAKE_AI_MODEL,
-  promptVersion: 'v1',
-};
+export function defaultReviewConfig(): AiReviewConfig {
+  const usingHuggingFace = process.env.HEYQ_AI_PROVIDER?.trim().toLowerCase() === 'huggingface';
+  return {
+    enabled: true,
+    thresholdPercent: 80,
+    model: usingHuggingFace ? PRODUCTION_AI_MODEL : FAKE_AI_MODEL,
+    promptVersion: 'v1',
+  };
+}
+
+/** The defaults for the CURRENT environment. Kept for call sites that read a value. */
+export const DEFAULT_REVIEW_CONFIG: AiReviewConfig = defaultReviewConfig();
 
 export interface SeedState {
   requesters: Requester[];
@@ -889,7 +910,7 @@ function seed(): SeedState {
     requesterAccess,
     attachments: [],
     qualityReviews,
-    reviewConfig: { ...DEFAULT_REVIEW_CONFIG },
+    reviewConfig: defaultReviewConfig(),
     aiHealth: { consecutiveFailures: 0 },
     // Running reference counter, seeded past the demo tickets.
     referenceSeq: 107,

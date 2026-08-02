@@ -25,7 +25,13 @@ import type { AiReviewPrompt } from './aiReviewPrompt.ts';
 /** Bounded so a hung model can never hold a request open indefinitely. */
 export const HF_TIMEOUT_MS = 30_000;
 
-const HF_BASE_URL = 'https://api-inference.huggingface.co/models';
+/**
+ * The Inference Providers router — an OpenAI-compatible chat-completions
+ * endpoint. The older `api-inference.huggingface.co/models/{id}` host this
+ * originally targeted is no longer supported and answers with a redirect notice,
+ * so the model id now travels in the BODY rather than the path.
+ */
+const HF_CHAT_COMPLETIONS_URL = 'https://router.huggingface.co/v1/chat/completions';
 
 /** One retry only, and only for a condition that may simply pass on its own. */
 const MAX_ATTEMPTS = 2;
@@ -102,28 +108,40 @@ const FAILURE_MESSAGES: Record<AiFailureCode, string> = {
 };
 
 /**
- * Pull the generated text out of a Hugging Face response body. The text-generation
- * shape is `[{ generated_text }]`; some deployments return the object directly.
- * Anything else is `invalid_response` — we never guess at a body we do not
- * recognise, because a guess becomes a stored review.
+ * Pull the assistant's message out of a chat-completions body:
+ * `choices[0].message.content`. Anything else is `invalid_response` — we never
+ * guess at a body we do not recognise, because a guess becomes a stored review.
  */
 export function extractGeneratedText(body: unknown): string | null {
-  const candidate = Array.isArray(body) ? body[0] : body;
-  if (!candidate || typeof candidate !== 'object') return null;
-  const text = (candidate as Record<string, unknown>).generated_text;
-  return typeof text === 'string' && text.trim() !== '' ? text : null;
+  if (!body || typeof body !== 'object') return null;
+  const choices = (body as Record<string, unknown>).choices;
+  if (!Array.isArray(choices) || choices.length === 0) return null;
+
+  const message = (choices[0] as Record<string, unknown> | undefined)?.message;
+  if (!message || typeof message !== 'object') return null;
+
+  const content = (message as Record<string, unknown>).content;
+  return typeof content === 'string' && content.trim() !== '' ? content : null;
 }
 
 /**
- * Hugging Face does not reliably expose the resolved model revision. Read it when
- * a deployment does provide one and leave it undefined otherwise — a fabricated
- * version on a stored review would be worse than none.
+ * The resolved model identity, from the response body.
+ *
+ * The router exposes no revision or commit header, so there is nothing to read
+ * from the headers at all. What it DOES return is OpenAI-compatible:
+ * `system_fingerprint` (the backend configuration a response was produced with)
+ * and `model` (the model actually served, which differs from what we asked for
+ * when a routing policy or provider suffix resolves).
+ *
+ * An echo of the model we requested is not a version, so it is not recorded as
+ * one — an unreported version stays undefined rather than being invented.
  */
-export function readModelVersion(headers: Headers): string | undefined {
-  for (const header of ['x-model-revision', 'x-repo-commit', 'etag']) {
-    const value = headers.get(header)?.trim().replace(/^"|"$/g, '');
-    if (value) return value;
-  }
+export function readModelVersion(body: unknown, requestedModel: string): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const { system_fingerprint: fingerprint, model } = body as Record<string, unknown>;
+
+  if (typeof fingerprint === 'string' && fingerprint.trim() !== '') return fingerprint.trim();
+  if (typeof model === 'string' && model.trim() !== '' && model.trim() !== requestedModel) return model.trim();
   return undefined;
 }
 
@@ -141,7 +159,7 @@ async function attempt(
   const startedAt = Date.now();
 
   try {
-    const response = await fetch(`${HF_BASE_URL}/${request.model}`, {
+    const response = await fetch(HF_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -150,9 +168,9 @@ async function attempt(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        inputs: toHuggingFaceInput(request.prompt),
-        parameters: { return_full_text: false },
-        options: { wait_for_model: true },
+        model: request.model,
+        messages: [{ role: 'user', content: toHuggingFaceInput(request.prompt) }],
+        stream: false,
       }),
     });
     const latencyMs = Date.now() - startedAt;
@@ -174,7 +192,7 @@ async function attempt(
       return { failure: { code: 'invalid_response', message: FAILURE_MESSAGES.invalid_response }, latencyMs };
     }
 
-    const modelVersion = readModelVersion(response.headers);
+    const modelVersion = readModelVersion(body, request.model);
     return { result: { status: 'ok', raw, latencyMs, ...(modelVersion ? { modelVersion } : {}) } };
   } catch {
     return { failure: codeForThrown(timedOut), latencyMs: Date.now() - startedAt };
