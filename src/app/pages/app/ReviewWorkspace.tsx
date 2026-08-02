@@ -7,6 +7,7 @@ import {
   submitReview,
 } from '../../services/reviewService';
 import type { CoachingFeedback, CriterionResponses } from '../../models/review';
+import { isReviewEligible } from '../../services/reviewEligibility';
 import { useQuery } from '../../hooks/useQuery';
 import { useMutation } from '../../hooks/useMutation';
 import { useIdentity } from '../../contexts/IdentityContext';
@@ -84,6 +85,10 @@ export function ReviewWorkspace() {
   }
 
   const mutationError = submitMutation.error?.message ?? draftMutation.error?.message;
+  // Read from the ticket the workspace already loaded, through the SAME rule the
+  // server enforces — so a hidden button and a refused request can never disagree.
+  // The server is still the control: this only spares a supervisor a pointless error.
+  const eligible = isReviewEligible(data.evidence.ticket);
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,12 +121,14 @@ export function ReviewWorkspace() {
               prefills the supervisor's answers — the two records stay separate. */}
           <AiReviewPanel
             review={data.aiReview}
+            eligible={eligible}
             running={aiMutation.loading}
             error={aiMutation.error?.message}
             onRun={onRunAiReview}
           />
           <ReviewForm
             review={data.review}
+            eligible={eligible}
             reviewerName={identity.name}
             saving={draftMutation.loading}
             submitting={submitMutation.loading}

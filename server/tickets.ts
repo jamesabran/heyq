@@ -476,6 +476,38 @@ function reopen(store: Store, ticket: Ticket, actor: string, note: string) {
 const isClosedOut = (t: Ticket) => t.status === 'resolved' || t.status === 'closed';
 
 /**
+ * Hooks run when a ticket crosses from ACTIVE work into resolution — the moment
+ * its handling is finished and can be assessed.
+ *
+ * Inverted deliberately, the same way server/store.ts inverts its reset hooks:
+ * ticket handling knows nothing about quality reviews, so the review side
+ * registers itself (server/aiReview.ts) instead of tickets importing it. A hook
+ * is fired ONLY on a genuine active → resolved transition, which is what makes
+ * re-resolving an already-resolved ticket a no-op rather than a second review.
+ */
+type ResolutionHook = (storeId: string, ticketId: string) => void;
+const resolutionHooks: ResolutionHook[] = [];
+
+export function onTicketResolved(hook: ResolutionHook): void {
+  resolutionHooks.push(hook);
+}
+
+/**
+ * Notify the hooks, and never let one of them break the resolution. A hook is a
+ * side effect of resolving a ticket; the ticket operation is the thing that has
+ * to succeed.
+ */
+function fireTicketResolved(storeId: string, ticketId: string): void {
+  for (const hook of resolutionHooks) {
+    try {
+      hook(storeId, ticketId);
+    } catch {
+      // Deliberately swallowed — see above.
+    }
+  }
+}
+
+/**
  * Requester posts a public reply. A hold on them lifts; a closed-out ticket
  * reopens. `uploads` are already-validated file bytes (the HTTP layer validates
  * BEFORE calling, so the message + its attachments are created together — never a
@@ -833,7 +865,15 @@ export async function addInternalNote(storeId: string, ticketId: string, agentId
   return clone(note);
 }
 
-/** Agent resolves a ticket with a resolution type. */
+/**
+ * Agent resolves a ticket with a resolution type.
+ *
+ * Crossing from active work into resolution fires the resolution hooks (an
+ * automatic AI quality review, today). Re-resolving a ticket that is ALREADY
+ * resolved or closed does not: it is not a transition, so nothing downstream
+ * treats it as a fresh resolution — which is what makes a retried request or a
+ * repeated status update harmless.
+ */
 export async function resolveTicket(
   storeId: string,
   ticketId: string,
@@ -846,10 +886,14 @@ export async function resolveTicket(
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
   const fromStatus = ticket.status;
+  const wasActive = !isClosedOut(ticket);
   ticket.resolutionType = resolutionType;
   ticket.resolvedAt = nowIso();
   transition(store, ticket, 'resolved', agentId, note);
   publishStatusChanged(storeId, ticket, 'agent', fromStatus);
+  // After the transition, so a hook reads the ticket in its resolved state; the
+  // hooks return immediately and never hold this request up.
+  if (wasActive) fireTicketResolved(storeId, ticket.id);
   const notify = requesterNotificationsOn(ticket);
   emit(storeId, {
     recipientId: agentId,

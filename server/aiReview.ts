@@ -5,7 +5,7 @@
  * (aiReviewProvider.ts), and the store. It owns exactly one decision the other
  * modules must not make: whether a human still has to look at this ticket.
  *
- * Three rules hold everywhere in this file:
+ * Five rules hold everywhere in this file:
  *
  *   1. The MANUAL path is never touched. `upsertDraft` / `submitReview` in
  *      server/reviews.ts are not called, and no supervisor record is read for
@@ -20,23 +20,35 @@
  *      — never an exception that could reach a ticket operation. The only errors
  *      thrown from here are caller errors (AI disabled, unknown ticket), raised
  *      before any AI work begins.
+ *
+ *   4. Only FINISHED handling is graded. Every entry point checks
+ *      `isReviewEligible` before doing anything, so an active ticket cannot be
+ *      reviewed through the UI, through the API, or by accident.
+ *
+ *   5. History is append-only. A run belongs to a RESOLUTION CYCLE; a run in a
+ *      new cycle appends a new record rather than rewriting the previous one, so
+ *      reopening and re-resolving a ticket can never erase what the AI said the
+ *      first time round.
  */
 import { QUALITY_RUBRIC } from '../src/app/data/reviewRubric.ts';
+import { isReviewEligible, REVIEW_BLOCKED_MESSAGE } from '../src/app/services/reviewEligibility.ts';
 import { computeReviewScore } from '../src/app/services/reviewScoring.ts';
 import type {
   AiFinding,
   AiReviewConfig,
   AiReviewError,
+  AiReviewTrigger,
   QualityReview,
   ReviewScore,
   SupervisorRequiredReason,
 } from '../src/app/models/review.ts';
+import type { Ticket, TicketStatus } from '../src/app/models/ticket.ts';
 import { clone, makeId, nowIso } from '../src/app/lib/mock.ts';
 import { buildReviewPrompt, findingsToResponses, parseAiReview } from './aiReviewPrompt.ts';
 import { getAiReviewProvider } from './aiReviewProvider.ts';
-import { latestAiReviewForTicket } from './reviews.ts';
+import { aiReviewsForTicket, latestAiReviewForTicket } from './reviews.ts';
 import { getStore, type Store } from './store.ts';
-import { getTicketDetail } from './tickets.ts';
+import { getTicketDetail, onTicketResolved } from './tickets.ts';
 
 /** Server-owned config for this store. Read fresh on every run, never cached. */
 export function getReviewConfig(storeId: string): AiReviewConfig {
@@ -77,22 +89,87 @@ export function decideSupervisorRequired(
   return { required: false };
 }
 
-/** Create the ticket's AI review, or reset the existing one for a rerun. */
-function startRun(store: Store, ticketId: string, agentId: string, config: AiReviewConfig): QualityReview {
+/**
+ * Which resolution cycle a ticket is currently in: how many times it has crossed
+ * from ACTIVE work into an end state.
+ *
+ * Counted from the status history rather than stored, so it needs no new ticket
+ * state and cannot drift from what actually happened. Two properties matter:
+ *
+ *   - Re-resolving an already-resolved ticket does not advance it. That
+ *     transition starts from an end state, so it is not a new resolution — which
+ *     is what makes a retry or a repeated status update harmless.
+ *   - Reopening and resolving again DOES advance it, however quickly. A
+ *     timestamp would not: two resolutions in the same millisecond would share a
+ *     key and the second would overwrite the first cycle's review.
+ *
+ * A ticket that reached an end state without ever recording the transition (the
+ * seed sets some statuses directly) sits in cycle 0 — one stable bucket, so
+ * re-runs on it coalesce instead of piling up.
+ */
+function resolutionCycleOf(store: Store, ticket: Ticket): string {
+  const endStates: TicketStatus[] = ['resolved', 'closed'];
+  const resolutions = store.statusEvents.filter(
+    (e) =>
+      e.ticketId === ticket.id &&
+      endStates.includes(e.toStatus) &&
+      !(e.fromStatus && endStates.includes(e.fromStatus)),
+  );
+  return `cycle-${resolutions.length}`;
+}
+
+/**
+ * Whether an AUTOMATIC review has already been started for the ticket's current
+ * resolution cycle — the duplicate guard the whole automatic path rests on.
+ *
+ * It reads the STORE, not a timer or a lock, and the record it looks for is
+ * written synchronously before any provider work begins. A retried request, a
+ * repeated resolved update, or a second save of an already-resolved ticket
+ * therefore all find the first run's record and stop.
+ */
+function hasAutomaticReviewForCycle(store: Store, ticket: Ticket): boolean {
+  const cycle = resolutionCycleOf(store, ticket);
+  return aiReviewsForTicket(store, ticket.id).some(
+    (r) => r.ai?.trigger === 'automatic' && r.ai?.resolutionCycle === cycle,
+  );
+}
+
+/**
+ * Open a run: reuse the ticket's AI review only when it EXPLICITLY belongs to the
+ * current resolution cycle, otherwise append a new record.
+ *
+ * Reusing within a cycle keeps a re-run from growing a pile of stale opinions
+ * about one resolution. Appending otherwise is the rule that matters, and it has
+ * two cases:
+ *
+ *   - A record from an EARLIER cycle. The ticket was reopened and resolved
+ *     again; what the AI said the first time round stays exactly where it was.
+ *   - A record with NO `resolutionCycle` at all — written before cycles existed.
+ *     It is history, and history has no current cycle to belong to. Adopting it
+ *     into whatever cycle happens to be current would silently overwrite an old
+ *     assessment of an old resolution and relabel it as a new one, which is the
+ *     precise thing this feature promises never to do. So it is left alone, and
+ *     the run appends a properly tagged record beside it.
+ *
+ * That is deliberately unlike the `reviewType` / `trigger` defaults: those infer
+ * a value that was always true of the record. A cycle is not a property the
+ * record ever had, so there is nothing to infer.
+ */
+function beginRun(store: Store, ticket: Ticket, config: AiReviewConfig, trigger: AiReviewTrigger): QualityReview {
   const now = nowIso();
+  const cycle = resolutionCycleOf(store, ticket);
   const meta = {
     provider: getAiReviewProvider().id,
     model: config.model,
     promptVersion: config.promptVersion,
+    trigger,
+    resolutionCycle: cycle,
     status: 'running' as const,
     requestedAt: now,
   };
 
-  // A rerun REPLACES the ticket's AI review in place rather than accumulating
-  // records, so `latestAiReviewForTicket` stays unambiguous and a demo cannot
-  // silently grow a pile of stale AI opinions about one ticket.
-  const existing = latestAiReviewForTicket(store, ticketId);
-  if (existing) {
+  const existing = latestAiReviewForTicket(store, ticket.id);
+  if (existing?.ai?.resolutionCycle === cycle) {
     existing.ai = meta;
     existing.status = 'draft';
     existing.responses = {};
@@ -107,8 +184,8 @@ function startRun(store: Store, ticketId: string, agentId: string, config: AiRev
 
   const review: QualityReview = {
     id: makeId('qrai'),
-    ticketId,
-    agentId,
+    ticketId: ticket.id,
+    agentId: ticket.assigneeId!,
     // An AI review has no human owner; the UI reads authorship from `reviewType`.
     reviewerId: 'ai',
     reviewType: 'ai',
@@ -211,31 +288,34 @@ function finishSucceeded(
 }
 
 /**
- * Run an AI review for one ticket and return the resulting record.
- *
- * Still synchronous and still explicitly triggered: the provider bounds its own
- * timeout and retries at most once, so the request has a known ceiling. Moving
- * to a background job changes the caller, not the stored shape — the record
- * already carries a `running` status and a latency.
+ * The checks every run shares, in the order a caller cares about. Throws on a
+ * caller error BEFORE any record is created, so a refused request never leaves a
+ * half-built review behind.
  */
-export async function runAiReview(storeId: string, ticketId: string): Promise<QualityReview> {
-  const store = getStore(storeId);
-  const config = store.reviewConfig;
-
-  // Caller errors — raised BEFORE any record is created, so a refused request
-  // never leaves a half-built review behind.
-  if (!config.enabled) {
-    throw new Error('AI Quality Reviews are disabled.');
-  }
+function requireRunnableTicket(store: Store, ticketId: string): Ticket & { assigneeId: string } {
   const ticket = store.tickets.find((t) => t.id === ticketId);
   if (!ticket) throw new Error('Ticket not found');
   if (!ticket.assigneeId) throw new Error('This ticket has no assigned agent to review.');
+  // The rule this whole feature turns on: an active ticket is still being
+  // handled, so there is no finished handling to grade yet.
+  if (!isReviewEligible(ticket)) throw new Error(REVIEW_BLOCKED_MESSAGE);
+  return ticket as Ticket & { assigneeId: string };
+}
 
-  const evidence = await getTicketDetail(storeId, ticketId);
-  if (!evidence) throw new Error('Ticket not found');
-
-  const review = startRun(store, ticketId, ticket.assigneeId, config);
-
+/**
+ * Grade an already-opened run to completion.
+ *
+ * Everything here is CONTAINED: no provider or parser outcome may throw out of
+ * this function, because one of its callers is a background task nobody is
+ * awaiting and the other sits next to a ticket operation.
+ */
+async function completeRun(
+  storeId: string,
+  store: Store,
+  review: QualityReview,
+  ticket: Ticket & { assigneeId: string },
+  config: AiReviewConfig,
+): Promise<QualityReview> {
   // Switched off for this deployment. Nothing is selected, no prompt is built,
   // and no provider is asked for anything — the run stops here.
   //
@@ -244,21 +324,22 @@ export async function runAiReview(storeId: string, ticketId: string): Promise<Qu
   // caller: the workspace renders it, and the ticket still goes to a human. A
   // throw would instead surface as a broken request for a deliberate setting.
   if (!aiReviewsEnabled()) {
-    return clone(
-      finishFailed(
-        store,
-        review,
-        { code: 'disabled', message: 'AI Quality Reviews are switched off for this deployment.' },
-        undefined,
-        // Not the reviewer's fault, so it must not show up as a failure streak.
-        { countAgainstHealth: false },
-      ),
+    return finishFailed(
+      store,
+      review,
+      { code: 'disabled', message: 'AI Quality Reviews are switched off for this deployment.' },
+      undefined,
+      // Not the reviewer's fault, so it must not show up as a failure streak.
+      { countAgainstHealth: false },
     );
   }
 
-  // Everything from here is contained: no provider or parser outcome may throw
-  // out of this function, because callers include ticket-adjacent flows.
   try {
+    const evidence = await getTicketDetail(storeId, ticket.id);
+    if (!evidence) {
+      return finishFailed(store, review, { code: 'evidence_missing', message: 'The ticket evidence could not be read.' });
+    }
+
     const prompt = buildReviewPrompt(evidence, {
       rubric: QUALITY_RUBRIC,
       promptVersion: config.promptVersion,
@@ -269,19 +350,15 @@ export async function runAiReview(storeId: string, ticketId: string): Promise<Qu
 
     if (result.status === 'unavailable') {
       // A real transport says WHY it could not be reached; the fake does not.
-      return clone(
-        finishFailed(
-          store,
-          review,
-          { code: result.code ?? 'unavailable', message: result.message ?? 'The AI reviewer is unavailable.' },
-          result.latencyMs,
-        ),
+      return finishFailed(
+        store,
+        review,
+        { code: result.code ?? 'unavailable', message: result.message ?? 'The AI reviewer is unavailable.' },
+        result.latencyMs,
       );
     }
     if (result.status === 'error') {
-      return clone(
-        finishFailed(store, review, { code: result.code, message: result.message }, result.latencyMs),
-      );
+      return finishFailed(store, review, { code: result.code, message: result.message }, result.latencyMs);
     }
 
     const parsed = parseAiReview(result.raw, QUALITY_RUBRIC);
@@ -289,24 +366,113 @@ export async function runAiReview(storeId: string, ticketId: string): Promise<Qu
       // The call succeeded but the content is unusable — still a failed run, and
       // still counted against health: a model that reliably returns garbage is
       // just as broken as one that is down.
-      return clone(
-        finishFailed(store, review, { code: parsed.code, message: parsed.message }, result.latencyMs),
-      );
+      return finishFailed(store, review, { code: parsed.code, message: parsed.message }, result.latencyMs);
     }
 
-    return clone(
-      finishSucceeded(store, review, parsed.findings, config, {
-        latencyMs: result.latencyMs,
-        modelVersion: result.modelVersion,
-      }),
-    );
+    return finishSucceeded(store, review, parsed.findings, config, {
+      latencyMs: result.latencyMs,
+      modelVersion: result.modelVersion,
+    });
   } catch (err) {
     // A provider that breaks its contract and throws is still contained here.
-    return clone(
-      finishFailed(store, review, {
-        code: 'provider_threw',
-        message: err instanceof Error ? err.message : String(err),
-      }),
-    );
+    return finishFailed(store, review, {
+      code: 'provider_threw',
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 }
+
+/**
+ * Run an AI review for one ticket ON REQUEST, and return the resulting record.
+ *
+ * This is the MANUAL path — the supervisor's "Re-run AI review" fallback. It is
+ * awaited, because someone is watching a button and is owed an answer; the
+ * provider bounds its own timeout and retries at most once, so the request has a
+ * known ceiling. The ticket must already be in an end state: a re-run of an
+ * active ticket is refused here, not merely hidden in the UI.
+ */
+export async function runAiReview(storeId: string, ticketId: string): Promise<QualityReview> {
+  const store = getStore(storeId);
+  const config = store.reviewConfig;
+
+  if (!config.enabled) {
+    throw new Error('AI Quality Reviews are disabled.');
+  }
+  const ticket = requireRunnableTicket(store, ticketId);
+
+  const review = beginRun(store, ticket, config, 'manual');
+  return clone(await completeRun(storeId, store, review, ticket, config));
+}
+
+// ── The automatic review, started when a ticket is resolved ──────────────────
+
+/**
+ * Runs started by a resolution and not yet finished. Tracked ONLY so tests can
+ * wait for them deterministically — nothing in production reads this, and it is
+ * emptied as each run settles rather than accumulating.
+ */
+const inFlight = new Set<Promise<unknown>>();
+
+/**
+ * Resolve once every automatic review started so far has settled. A TEST
+ * affordance, in the spirit of `__setAiReviewProviderForTest`: the product path
+ * deliberately never waits, so a test that needs the finished record has to say
+ * so explicitly.
+ */
+export async function __settleAiReviewsForTest(): Promise<void> {
+  while (inFlight.size > 0) {
+    await Promise.allSettled([...inFlight]);
+  }
+}
+
+/**
+ * Start the ONE automatic AI review for a ticket that has just been resolved.
+ *
+ * Returns immediately — synchronously, before any provider work. The record is
+ * created in the store first (status `running`) and the grading is then left to
+ * run on its own, so the resolution request that triggered this completes at its
+ * own speed no matter how slow the model is. A supervisor opening the workspace
+ * mid-run sees the running record; when it settles, the same record carries the
+ * result.
+ *
+ * Every reason not to run is a SILENT no-op, never an error: resolving a ticket
+ * must not fail because the reviewer is switched off, the ticket has no assignee,
+ * or a review was already started for this resolution.
+ */
+export function startAutomaticAiReview(storeId: string, ticketId: string): void {
+  const store = getStore(storeId);
+  const config = store.reviewConfig;
+  // Switched off — as a product setting for this store, or for the deployment.
+  // Nothing is recorded AT ALL, unlike the manual path: nobody asked for this
+  // run, so there is nobody to hand a failed record to. Writing one anyway would
+  // stamp "the AI could not review this" onto every resolved ticket in a
+  // deployment that deliberately has no AI reviewer.
+  if (!config.enabled || !aiReviewsEnabled()) return;
+
+  const ticket = store.tickets.find((t) => t.id === ticketId);
+  if (!ticket?.assigneeId) return;
+  if (!isReviewEligible(ticket)) return;
+  // One automatic review per resolution cycle — the duplicate guard.
+  if (hasAutomaticReviewForCycle(store, ticket)) return;
+
+  const runnable = ticket as Ticket & { assigneeId: string };
+  // Written BEFORE the await: any second call in this same cycle now finds it.
+  const review = beginRun(store, runnable, config, 'automatic');
+
+  // `completeRun` contains its own failures, so this only catches the truly
+  // unexpected. It must still never reject: nobody is awaiting this promise.
+  const run = completeRun(storeId, store, review, runnable, config).catch(() => undefined);
+  inFlight.add(run);
+  void run.finally(() => inFlight.delete(run));
+}
+
+/**
+ * Wire the automatic review to ticket resolution.
+ *
+ * Registered here rather than imported by server/tickets.ts, so tickets keep
+ * knowing nothing about AI reviews — the same inversion server/store.ts uses for
+ * its reset hooks. server/http.ts imports this module, so the wiring is in place
+ * for the running server and for every test (src/test/setup.ts builds the HTTP
+ * server for the whole suite).
+ */
+onTicketResolved(startAutomaticAiReview);

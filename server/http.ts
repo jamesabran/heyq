@@ -505,10 +505,13 @@ const routes: Route[] = [
     },
   },
   {
-    // Explicitly run an AI review for one ticket. Role-checked SERVER-side so the
-    // restriction survives a caller that never loads the UI; refused outright
-    // when an admin has AI reviews turned off. Synchronous in this phase — the
-    // provider is a local fake, so there is nothing to queue.
+    // Explicitly re-run an AI review for one ticket — the supervisor's fallback
+    // after the automatic review that resolution already started. Role-checked
+    // SERVER-side so the restriction survives a caller that never loads the UI;
+    // refused outright when an admin has AI reviews turned off, and refused for
+    // a ticket that is still active (server/aiReview.ts) so a direct API call
+    // cannot review work that is not finished. Awaited, because a supervisor is
+    // watching a button — unlike the automatic run, which is not.
     method: 'POST', pattern: '/reviews/ai/run',
     handler: async (req, _p, _q, storeId) => {
       const b = await readJsonBody(req);

@@ -40,11 +40,35 @@ const setThreshold = (percent: number) => {
   getStore(S).reviewConfig.thresholdPercent = percent;
 };
 
+/**
+ * Every ticket these tests grade. A review only applies to FINISHED handling, so
+ * each is put into an end state before the suite touches it — the seed leaves
+ * most of them mid-flight. The rule itself (an active ticket is refused) is
+ * proven in `eligibility` below, not assumed here.
+ */
+const GRADED_TICKETS = [
+  'tkt-seed-5', 'tkt-seed-7', 'tkt-seed-8', 'tkt-seed-10',
+  'tkt-seed-15', 'tkt-seed-16', 'tkt-seed-17',
+  'tkt-bp-1', 'tkt-bp-2', 'tkt-bp-3', 'tkt-bp-4',
+];
+
+/**
+ * Mark a ticket resolved, keeping any `resolvedAt` it already has — the
+ * resolution cycle must stay STABLE across a file that reuses one store, so a
+ * re-run coalesces onto the same record instead of opening a new cycle.
+ */
+function markResolved(ticketId: string): void {
+  const ticket = getStore(S).tickets.find((t) => t.id === ticketId)!;
+  if (ticket.status !== 'closed') ticket.status = 'resolved';
+  ticket.resolvedAt ??= '2026-07-14T09:00:00Z';
+}
+
 // AI reviews are switched OFF by default (HEYQ_AI_REVIEW_ENABLED), so a test
 // that runs one opts in explicitly — exactly as a deployment has to. The
 // off-switch itself is covered in `the deployment off switch` below.
 beforeEach(() => {
   process.env.HEYQ_AI_REVIEW_ENABLED = 'true';
+  for (const id of GRADED_TICKETS) markResolved(id);
 });
 
 afterEach(() => {
@@ -290,13 +314,21 @@ describe('re-running', () => {
     expect(getStore(S).qualityReviews.filter((r) => r.ticketId === 'tkt-seed-5' && r.reviewType === 'ai')).toHaveLength(1);
   });
 
-  it('re-runs the SEEDED AI review without corrupting anything else', async () => {
+  it('re-runs beside the SEEDED AI review without corrupting anything else', async () => {
     const store = getStore(S);
     const supervisorBefore = structuredClone(store.qualityReviews.filter((r) => r.reviewType !== 'ai'));
+    // qr-seed-3 predates resolution cycles, so it carries no `resolutionCycle`.
+    const legacy = structuredClone(store.qualityReviews.find((r) => r.id === 'qr-seed-3')!);
+    expect(legacy.ai?.resolutionCycle).toBeUndefined();
 
     const rerun = await runAiReview(S, 'tkt-bp-4');
-    expect(rerun.id).toBe('qr-seed-3'); // the existing AI record, reused
+
+    // A NEW record, tagged with the cycle it actually belongs to — the legacy
+    // one is history and is not adopted into the current cycle.
+    expect(rerun.id).not.toBe('qr-seed-3');
     expect(rerun.ai?.status).toBe('succeeded');
+    expect(rerun.ai?.resolutionCycle).toEqual(expect.any(String));
+    expect(store.qualityReviews.find((r) => r.id === 'qr-seed-3')).toEqual(legacy);
 
     // Every supervisor record in the store is byte-for-byte unchanged.
     expect(store.qualityReviews.filter((r) => r.reviewType !== 'ai')).toEqual(supervisorBefore);

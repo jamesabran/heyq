@@ -10,6 +10,7 @@ import type {
 import { CRITERION_VALUE_LABELS } from '../../models/review';
 import { QUALITY_RUBRIC, findCriterion } from '../../data/reviewRubric';
 import { computeReviewScore } from '../../services/reviewScoring';
+import { REVIEW_BLOCKED_MESSAGE } from '../../services/reviewEligibility';
 import { formatDateTime } from '../../lib/utils';
 import { cn } from '../../lib/utils';
 import { Alert } from '../ui/Alert';
@@ -27,9 +28,15 @@ const EMPTY_FEEDBACK: CoachingFeedback = { whatWentWell: '', areasForImprovement
  * commit actions. "Yes" always means the standard was met; N/A drops a line from
  * the possible score; a No on a zero-tolerance line flags the whole review. A
  * submitted review is read-only — its frozen score and rubric version are shown.
+ *
+ * An ACTIVE ticket is read-only too: there is no finished handling to grade yet,
+ * so the commit actions are replaced with the reason. Any draft already on the
+ * record (from an earlier resolution, before the ticket was reopened) stays
+ * visible — blocked from further editing, never discarded.
  */
 export function ReviewForm({
   review,
+  eligible,
   reviewerName,
   saving,
   submitting,
@@ -38,6 +45,8 @@ export function ReviewForm({
   onSubmit,
 }: {
   review: QualityReview | null;
+  /** Whether the ticket is finished and may be reviewed at all. */
+  eligible: boolean;
   reviewerName: string;
   saving: boolean;
   submitting: boolean;
@@ -46,6 +55,7 @@ export function ReviewForm({
   onSubmit: (responses: CriterionResponses, feedback: CoachingFeedback) => void;
 }) {
   const locked = review?.status === 'submitted';
+  const readOnly = locked || !eligible;
   const [responses, setResponses] = useState<CriterionResponses>(review?.responses ?? {});
   const [feedback, setFeedback] = useState<CoachingFeedback>(review?.feedback ?? EMPTY_FEEDBACK);
 
@@ -75,7 +85,7 @@ export function ReviewForm({
                 key={criterion.id}
                 criterion={criterion}
                 value={responses[criterion.id]}
-                locked={locked}
+                locked={readOnly}
                 onChange={(v) => setAnswer(criterion.id, v)}
               />
             ))}
@@ -93,19 +103,19 @@ export function ReviewForm({
           <FeedbackField
             label="What went well"
             value={feedback.whatWentWell}
-            locked={locked}
+            locked={readOnly}
             onChange={(v) => setField('whatWentWell', v)}
           />
           <FeedbackField
             label="Areas for improvement"
             value={feedback.areasForImprovement}
-            locked={locked}
+            locked={readOnly}
             onChange={(v) => setField('areasForImprovement', v)}
           />
           <FeedbackField
             label="Reviewer comments"
             value={feedback.reviewerComments}
-            locked={locked}
+            locked={readOnly}
             onChange={(v) => setField('reviewerComments', v)}
           />
         </CardContent>
@@ -115,6 +125,8 @@ export function ReviewForm({
         <p className="px-1 text-sm text-muted-foreground">
           Submitted by {reviewerName}. This review is final and can no longer be edited.
         </p>
+      ) : !eligible ? (
+        <p className="px-1 text-sm text-muted-foreground">{REVIEW_BLOCKED_MESSAGE}</p>
       ) : (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {score.unansweredRequired > 0 && (

@@ -23,6 +23,12 @@ export const CRITERION_VALUE_LABELS: Record<CriterionValue, string> = {
 export interface RubricCriterion {
   id: string;
   label: string;
+  /**
+   * A two-or-three word name for this criterion, used where the full label is
+   * too long to read in a sentence (the AI review summary). Display only — it
+   * has no bearing on what is assessed or how it is scored.
+   */
+  shortLabel?: string;
   /** Short guidance shown under the label. */
   hint?: string;
   weight: number;
@@ -146,6 +152,18 @@ export interface QualityReview {
  */
 export type AiProcessingStatus = 'running' | 'succeeded' | 'failed';
 
+/**
+ * What started an AI review. Exactly one `automatic` run is allowed per
+ * resolution cycle; `manual` re-runs are unlimited and are the supervisor's
+ * fallback when the automatic one failed or looks wrong.
+ */
+export type AiReviewTrigger = 'automatic' | 'manual';
+
+/** How a run was started. Records written before the field existed read as manual. */
+export function aiTriggerOf(meta: Pick<AiReviewMeta, 'trigger'>): AiReviewTrigger {
+  return meta.trigger ?? 'manual';
+}
+
 /** Why a supervisor must still look at a ticket the AI has already reviewed. */
 export type SupervisorRequiredReason = 'low_score' | 'zero_tolerance' | 'ai_failed' | 'unscorable';
 
@@ -190,6 +208,21 @@ export interface AiReviewMeta {
   /** Which provider produced this (`fake`, `huggingface`, …). */
   provider: string;
   model: string;
+  /**
+   * What asked for this run. `automatic` is the single run started when the
+   * ticket was resolved; `manual` is a supervisor pressing Re-run. Omitted on
+   * records written before the distinction existed — read it through
+   * `aiTriggerOf`, never directly.
+   */
+  trigger?: AiReviewTrigger;
+  /**
+   * Which resolution cycle this review belongs to — how many times the ticket had
+   * crossed from active work into an end state when the run started. Reopening
+   * and resolving again advances it, so the new run appends a record instead of
+   * overwriting the previous cycle's. It is also the duplicate guard: at most one
+   * `automatic` review may exist per key.
+   */
+  resolutionCycle?: string;
   /**
    * The resolved model revision, when the host reports one. Absent whenever it
    * does not — never fabricated, since a wrong version on a frozen review is

@@ -36,6 +36,7 @@ import {
   type ReviewableTicket,
 } from '../src/app/models/review.ts';
 import { QUALITY_RUBRIC } from '../src/app/data/reviewRubric.ts';
+import { isReviewEligible, REVIEW_BLOCKED_MESSAGE } from '../src/app/services/reviewEligibility.ts';
 import { computeReviewScore, missingRequired } from '../src/app/services/reviewScoring.ts';
 import { clone, makeId, nowIso, simulateLatency } from '../src/app/lib/mock.ts';
 import { getStore, type Store } from './store.ts';
@@ -57,15 +58,27 @@ export function supervisorReviewForTicket(store: Store, ticketId: string): Quali
 }
 
 /**
- * The ticket's most recent AI review, if any. A ticket may accumulate several
- * over its life (e.g. re-resolved after a reopen), so this reads the newest
- * rather than assuming one — the supervisor review is unaffected either way.
+ * Every AI review a ticket has accumulated, oldest first — one per resolution
+ * cycle, plus any manual re-runs. Records are only ever appended, so this IS the
+ * ticket's AI review history: reopening a ticket and resolving it again adds to
+ * this list and never rewrites what is already in it.
+ *
+ * Insertion order is chronological within a store, so it is the tie-break when
+ * two records share a timestamp (`sort` is stable) — a re-run that lands in the
+ * same millisecond as the run before it still reads as the newer one.
  */
-export function latestAiReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
+export function aiReviewsForTicket(store: Store, ticketId: string): QualityReview[] {
   return store.qualityReviews
     .filter((r) => r.ticketId === ticketId && reviewTypeOf(r) === 'ai')
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .at(-1);
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/**
+ * The ticket's most recent AI review, if any — the one the workspace shows. The
+ * supervisor review is unaffected either way.
+ */
+export function latestAiReviewForTicket(store: Store, ticketId: string): QualityReview | undefined {
+  return aiReviewsForTicket(store, ticketId).at(-1);
 }
 
 function toListItem(store: Store, review: QualityReview): QualityReviewListItem {
@@ -95,14 +108,21 @@ export async function listReviews(storeId: string): Promise<QualityReviewListIte
 
 /**
  * Tickets that CAN be reviewed but have no SUBMITTED SUPERVISOR review yet — the
- * "To review" work and an agent profile's ticket list. A ticket is reviewable only
- * once it has an assigned agent to review. A `draftReviewId` marks the ones a lead
- * already started (so the board can route them to "In progress" and the UI can
- * resume).
+ * "To review" work and an agent profile's ticket list. A ticket qualifies only if
+ * it has an assigned agent to review AND has finished being handled: a queue that
+ * offers work a supervisor is not allowed to do is not a queue. A `draftReviewId`
+ * marks the ones a lead already started (so the board can route them to "In
+ * progress" and the UI can resume).
  *
- * ONLY a submitted supervisor review takes a ticket out of this queue. An AI
- * review — whatever it scored, whatever state it is in — never does: it is an
- * input to a supervisor's judgement, never a substitute for it.
+ * Reopening therefore takes a ticket OUT of this list while it is active, and
+ * resolving it again puts it back. Nothing is deleted by that: the reviews it
+ * already has are untouched and still listed by `listReviews`, still returned by
+ * the workspace, and still counted in the agent's history — only the invitation
+ * to do NEW review work goes away.
+ *
+ * ONLY a submitted supervisor review takes a finished ticket out of this queue.
+ * An AI review — whatever it scored, whatever state it is in — never does: it is
+ * an input to a supervisor's judgement, never a substitute for it.
  */
 export async function listReviewable(storeId: string, agentId?: string): Promise<ReviewableTicket[]> {
   await simulateLatency();
@@ -111,6 +131,9 @@ export async function listReviewable(storeId: string, agentId?: string): Promise
   const candidates = store.tickets.filter((t): t is Ticket & { assigneeId: string } => {
     if (!t.assigneeId) return false;
     if (agentId && t.assigneeId !== agentId) return false;
+    // The same rule the server enforces on every write (reviewEligibility.ts),
+    // applied to the read that offers the work in the first place.
+    if (!isReviewEligible(t)) return false;
     const supervisorReview = supervisorReviewForTicket(store, t.id);
     return !supervisorReview || supervisorReview.status !== 'submitted';
   });
@@ -179,6 +202,10 @@ function upsertDraft(store: Store, input: SaveReviewInput): QualityReview {
   const ticket = store.tickets.find((t) => t.id === input.ticketId);
   if (!ticket) throw new Error('Ticket not found');
   if (!ticket.assigneeId) throw new Error('This ticket has no assigned agent to review.');
+  // A review assesses FINISHED handling. Enforced here rather than in the HTTP
+  // layer so it holds for every caller, including a direct API request that
+  // never rendered the (already hidden) button.
+  if (!isReviewEligible(ticket)) throw new Error(REVIEW_BLOCKED_MESSAGE);
 
   const existing = supervisorReviewForTicket(store, input.ticketId);
   if (existing?.status === 'submitted') {

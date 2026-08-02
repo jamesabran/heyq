@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useId, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { IconChevronRight, IconClipboardCheck } from '@tabler/icons-react';
 import { getTicketDetail, resolveTicket } from '../../services/ticketService';
@@ -18,6 +18,7 @@ import {
 import { formatDate, formatDateTime, cn } from '../../lib/utils';
 import { realtimeSupported, type RealtimeStatus } from '../../lib/realtimeClient';
 import { hasRole, REVIEW_ROLES } from '../../lib/roles';
+import { isReviewEligible, REVIEW_BLOCKED_MESSAGE } from '../../services/reviewEligibility';
 import { Alert } from '../../components/ui/Alert';
 import { Button, buttonVariants } from '../../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -61,6 +62,9 @@ export function TicketDetail() {
   const resolve = useMutation(resolveTicket);
   const [resolution, setResolution] = useState<ResolutionType>('solved');
   const [resolveNote, setResolveNote] = useState('');
+  // Ties the disabled review action to its reason. Hooks run before the early
+  // returns below, so it is declared up here with the rest of them.
+  const reviewBlockedId = useId();
 
   if (detail.error) return <ErrorState onRetry={detail.refetch} />;
   if (detail.loading && !view) return <LoadingGrid count={3} />;
@@ -98,14 +102,36 @@ export function TicketDetail() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Supervisor entry point into the quality review workspace. Only offered
-              when there is an assigned agent to review, and only to reviewers. */}
+              when there is an assigned agent to review, and only to reviewers.
+              A ticket that is still being handled has nothing finished to grade,
+              so the action is DISABLED with the reason rather than hidden — a
+              lead looking for it should learn what has to happen first, not
+              wonder where it went. The server and the workspace still refuse an
+              ineligible review if this is ever reached another way. */}
           {ticket.assigneeId && hasRole(identity.role, REVIEW_ROLES) && (
-            <Link
-              to={`/app/reviews/${ticket.id}`}
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-            >
-              <IconClipboardCheck size={15} /> Start quality review
-            </Link>
+            isReviewEligible(ticket) ? (
+              <Link
+                to={`/app/reviews/${ticket.id}`}
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                <IconClipboardCheck size={15} /> Start quality review
+              </Link>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  title={REVIEW_BLOCKED_MESSAGE}
+                  aria-describedby={reviewBlockedId}
+                >
+                  <IconClipboardCheck size={15} /> Start quality review
+                </Button>
+                {/* The `title` reaches a pointer; this reaches a screen reader,
+                    which a disabled control cannot be focused to hear. */}
+                <span id={reviewBlockedId} className="sr-only">{REVIEW_BLOCKED_MESSAGE}</span>
+              </>
+            )
           )}
           {ticket.reopenedAt && (
             <Badge variant="outline" title={`Reopened ${formatDate(ticket.reopenedAt)}`}>Reopened</Badge>
