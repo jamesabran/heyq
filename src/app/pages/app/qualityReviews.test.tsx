@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
@@ -32,6 +32,16 @@ async function answerAllYes(user: ReturnType<typeof userEvent.setup>) {
     await user.click(within(group).getByRole('radio', { name: 'Yes' }));
   }
 }
+
+// AI reviews are switched OFF by default (HEYQ_AI_REVIEW_ENABLED); the tests
+// that run one opt in explicitly, exactly as a deployment has to.
+beforeEach(() => {
+  process.env.HEYQ_AI_REVIEW_ENABLED = 'true';
+});
+
+afterEach(() => {
+  delete process.env.HEYQ_AI_REVIEW_ENABLED;
+});
 
 describe('quality reviews — access control', () => {
   it('blocks a non-reviewer from the Quality Reviews page', async () => {

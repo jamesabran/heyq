@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   getReviewWorkspace,
   listReviewable,
@@ -27,6 +27,17 @@ function allYes(): CriterionResponses {
     QUALITY_RUBRIC.sections.flatMap((s) => s.criteria).map((c) => [c.id, 'yes' as const]),
   );
 }
+
+// AI reviews are switched OFF by default (HEYQ_AI_REVIEW_ENABLED). The tests
+// that run one opt in explicitly, the same way a deployment has to; the
+// disabled path is covered in `POST /reviews/ai/run` below.
+beforeEach(() => {
+  process.env.HEYQ_AI_REVIEW_ENABLED = 'true';
+});
+
+afterEach(() => {
+  delete process.env.HEYQ_AI_REVIEW_ENABLED;
+});
 
 describe('review listings', () => {
   it('returns the seeded reviews (one completed, one draft)', async () => {
@@ -255,6 +266,19 @@ describe('POST /reviews/ai/run', () => {
     __setAiReviewProviderForTest(unavailableAiProvider);
     const review = await runAiReview('tkt-seed-16', 'team_lead');
     expect(review.ai?.status).toBe('failed');
+    expect(review.supervisorReviewRequired).toBe(true);
+    expect(review.supervisorReviewReason).toBe('ai_failed');
+  });
+
+  it('returns a failed record — not an HTTP error — when AI reviews are switched off', async () => {
+    // The deployment switch is a setting, not a broken request: the caller still
+    // gets a review record it can render, exactly as when the model is down.
+    delete process.env.HEYQ_AI_REVIEW_ENABLED;
+
+    const review = await runAiReview('tkt-seed-16', 'team_lead');
+
+    expect(review.ai?.status).toBe('failed');
+    expect(review.ai?.error?.code).toBe('disabled');
     expect(review.supervisorReviewRequired).toBe(true);
     expect(review.supervisorReviewReason).toBe('ai_failed');
   });
