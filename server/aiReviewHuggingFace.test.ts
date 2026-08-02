@@ -64,6 +64,30 @@ afterEach(() => {
   delete process.env.HEYQ_HF_TOKEN;
 });
 
+/**
+ * Drive one request all the way to the provider's OWN abort, on fake timers.
+ * Shared because the mapping, the message, and the attempt count all need this
+ * identical setup — and because real timers must be restored either way.
+ */
+async function timeOut() {
+  // Never resolves on its own: only the provider's AbortController ends it.
+  fetchMock.mockImplementation(
+    (_url: string, init: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }),
+  );
+  const req = await request(); // built before the clock is frozen
+  vi.useFakeTimers();
+  try {
+    const promise = huggingFaceAiProvider.grade(req);
+    await vi.advanceTimersByTimeAsync(HF_TIMEOUT_MS + 1);
+    return await promise;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe('a successful call', () => {
   it('returns the generated text with a latency', async () => {
     const raw = JSON.stringify({ findings: {} });
@@ -186,28 +210,20 @@ describe('error mapping', () => {
     expect(result.status === 'unavailable' && result.code).toBe('network_error');
   });
 
-  it('maps a timeout when the request is aborted', async () => {
-    // Resolve only once the provider's own AbortController fires.
-    fetchMock.mockImplementation(
-      (_url: string, init: { signal: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
-          init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-        }),
-    );
-    const req = await request();
-    vi.useFakeTimers();
-    try {
-      const promise = huggingFaceAiProvider.grade(req);
-      // A timeout is transient, so BOTH attempts have to time out before the
-      // provider gives up — advancing once would leave the retry hanging.
-      await vi.advanceTimersByTimeAsync(HF_TIMEOUT_MS + 1);
-      await vi.advanceTimersByTimeAsync(HF_TIMEOUT_MS + 1);
-      const result = await promise;
-      expect(result.status === 'unavailable' && result.code).toBe('timeout');
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('maps a timeout when the request is aborted, and gives up after ONE attempt', async () => {
+    const result = await timeOut();
+
+    // The code frozen onto the review is unchanged by the no-retry rule.
+    expect(result.status).toBe('unavailable');
+    expect(result.status === 'unavailable' && result.code).toBe('timeout');
+    // A request that already burned the full budget does not get a second one:
+    // retrying would double the worst case with nothing downstream to stop it.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the timeout in the CURRENT budget, so the message cannot drift', async () => {
+    const result = await timeOut();
+    expect(result.status === 'unavailable' && result.message).toContain(`${HF_TIMEOUT_MS / 1000}s`);
   });
 });
 
@@ -262,8 +278,10 @@ describe('invalid provider responses', () => {
 });
 
 describe('the retry boundary', () => {
-  const transient: AiFailureCode[] = ['rate_limited', 'model_loading', 'upstream_error'];
-  const terminal: AiFailureCode[] = ['auth_error', 'invalid_request'];
+  const transient: AiFailureCode[] = ['network_error', 'rate_limited', 'model_loading', 'upstream_error'];
+  // `timeout` sits with the terminal codes despite being a passing condition:
+  // a second full budget is too expensive to spend on the same hung request.
+  const terminal: AiFailureCode[] = ['auth_error', 'invalid_request', 'timeout'];
 
   it.each([
     [429, 'rate_limited'],
@@ -308,9 +326,22 @@ describe('the retry boundary', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('does NOT retry a timeout, while other transient failures still do', async () => {
+    // The two halves of the same rule, asserted together so neither can be
+    // relaxed without the other being noticed.
+    await timeOut();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(errorResponse(503));
+    await huggingFaceAiProvider.grade(await request());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('classifies transient vs terminal codes consistently', () => {
     for (const code of transient) expect(isTransientFailure(code)).toBe(true);
     for (const code of terminal) expect(isTransientFailure(code)).toBe(false);
+    expect(isTransientFailure('timeout')).toBe(false);
     expect(isTransientFailure('missing_token')).toBe(false);
     expect(isTransientFailure('invalid_response')).toBe(false);
   });

@@ -43,9 +43,16 @@ export type AiFailureCode =
   | 'upstream_error'
   | 'invalid_response';
 
-/** Failures worth one more attempt — the condition may simply pass. */
+/**
+ * Failures worth one more attempt — the condition may simply pass.
+ *
+ * `timeout` is deliberately NOT one of them. A request that already burned the
+ * full transport budget is not likely to beat it on an identical second attempt,
+ * and retrying doubles the worst case to two whole budgets. Nothing downstream
+ * sets a deadline of its own, so that time is spent with a supervisor watching a
+ * button: one clean failure serves them better than two slow ones.
+ */
 export const TRANSIENT_FAILURE_CODES: AiFailureCode[] = [
-  'timeout',
   'network_error',
   'rate_limited',
   'model_loading',

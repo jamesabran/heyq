@@ -22,8 +22,24 @@ import {
 } from './aiReviewProvider.ts';
 import type { AiReviewPrompt } from './aiReviewPrompt.ts';
 
-/** Bounded so a hung model can never hold a request open indefinitely. */
-export const HF_TIMEOUT_MS = 30_000;
+/**
+ * Bounded so a hung model can never hold a request open indefinitely.
+ *
+ * 60s rather than 30s: the Inference Providers router load-balances across
+ * backends of very different speeds — the same prompt measured 17.1s (deepinfra)
+ * and 28.7s (together), the second at 96% of the old budget. One cold start on
+ * the slow side would have failed a request the model was about to answer.
+ *
+ * Nothing downstream imposes a lower ceiling: the route is synchronous with no
+ * deadline of its own, the Node server bounds request RECEIPT rather than the
+ * response, the API runs as a long-lived process rather than a function, and the
+ * client sets no timeout at all. This constant is the whole chain's only limit.
+ *
+ * Doubling it is affordable only because `timeout` no longer retries (see
+ * TRANSIENT_FAILURE_CODES) — the worst case stays ONE budget instead of becoming
+ * two.
+ */
+export const HF_TIMEOUT_MS = 60_000;
 
 /**
  * The Inference Providers router — an OpenAI-compatible chat-completions
