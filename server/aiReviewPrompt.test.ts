@@ -110,6 +110,22 @@ describe('parseAiReview — accepts', () => {
     expect(parsed.findings.clarity.evidence).toBe('agent: "…"');
   });
 
+  // A live Hugging Face run (google/gemma-4-31B-it) returned a correct answer
+  // wrapped in ```json … ```, despite the prompt asking for JSON only. Chat-tuned
+  // models do this routinely, so the fence must not cost a supervisor a review.
+  it('parses a response wrapped in a ```json code fence', () => {
+    const parsed = parseAiReview('```json\n' + validResponse() + '\n```', QUALITY_RUBRIC);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(Object.keys(parsed.findings)).toHaveLength(CRITERIA.length);
+    expect(parsed.findings.greeting.value).toBe('yes');
+  });
+
+  it('parses a fence with no language tag, and one padded with whitespace', () => {
+    expect(parseAiReview('```\n' + validResponse() + '\n```', QUALITY_RUBRIC).ok).toBe(true);
+    expect(parseAiReview('\n\n```JSON  \n' + validResponse() + '\n```\n\n', QUALITY_RUBRIC).ok).toBe(true);
+  });
+
   it('bounds an over-long evidence excerpt', () => {
     const parsed = parseAiReview(
       validResponse({ greeting: { value: 'yes', rationale: 'Fine.', evidence: 'y'.repeat(1000) } }),
@@ -140,6 +156,17 @@ describe('parseAiReview — rejects', () => {
 
   it('provider prose instead of JSON', () => {
     expect(reject('Sure! Here is my assessment of the agent.').code).toBe('invalid_json');
+  });
+
+  // The fence allowance is narrow on purpose: only a fence wrapping the WHOLE
+  // reply is presentation. Digging JSON out of commentary would be guessing at
+  // what the model meant, and the guess would be stored as a review.
+  it('JSON buried in surrounding commentary', () => {
+    expect(reject(`Here is my assessment:\n\n${validResponse()}\n\nHope that helps!`).code).toBe('invalid_json');
+  });
+
+  it('a code fence that does not contain JSON', () => {
+    expect(reject('```json\nassessment pending\n```').code).toBe('invalid_json');
   });
 
   it('invalid / truncated JSON', () => {

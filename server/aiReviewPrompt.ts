@@ -136,11 +136,37 @@ export type ParsedAiReview =
 
 const fail = (code: AiParseErrorCode, message: string): ParsedAiReview => ({ ok: false, code, message });
 
+/**
+ * A Markdown code fence wrapping the WHOLE response, with an optional language
+ * tag. Chat-tuned models emit this routinely even when told to reply with JSON
+ * only — the first live Hugging Face run returned exactly ```json … ```.
+ */
+const WRAPPING_CODE_FENCE = /^```[a-z]*[ \t]*\r?\n([\s\S]*?)\r?\n?```$/i;
+
+/**
+ * Remove a code fence that wraps the entire response. The fence is presentation
+ * rather than content, so stripping it does not loosen the parser: what is
+ * inside must still be valid JSON in the exact `findings` shape.
+ *
+ * Only a WRAPPING fence is removed. Prose with some JSON buried in it is left
+ * alone to fail as `invalid_json` — fishing a JSON-looking substring out of a
+ * reply we did not understand would be guessing, and a guess becomes a stored
+ * review a supervisor may act on.
+ */
+function stripWrappingCodeFence(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = WRAPPING_CODE_FENCE.exec(trimmed);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
  * Parse a provider response into findings, or refuse with a typed reason.
+ *
+ * A Markdown code fence around the whole reply is stripped first (see
+ * `stripWrappingCodeFence`); everything after that is unchanged and strict.
  *
  * Refuses when the response is not JSON, is not the expected shape, names a
  * criterion the rubric does not have, omits ANY rubric criterion, uses a value
@@ -154,7 +180,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 export function parseAiReview(raw: string, rubric: Rubric): ParsedAiReview {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim());
+    parsed = JSON.parse(stripWrappingCodeFence(raw));
   } catch {
     return fail('invalid_json', 'The AI reviewer did not return valid JSON.');
   }
