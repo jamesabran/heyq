@@ -175,6 +175,74 @@ describe('resolving a ticket starts one AI review', () => {
   });
 });
 
+/**
+ * Closing a ticket.
+ *
+ * `closed` is a real ticket status and a review-eligible one, but NOTHING in the
+ * product moves a ticket into it today — `resolveTicket` is the only transition
+ * into an end state (server/tickets.ts), and `closed` appears only in seed data.
+ * So these drive the transition the way a close action would have to record it,
+ * and then fire the trigger exactly as `resolveTicket` does.
+ *
+ * They are here to pin the contract in advance: whoever adds a close action
+ * inherits a failing test if they record the transition without starting the
+ * review, or start one without recording the transition.
+ */
+describe('closing a ticket (no product path yet)', () => {
+  /** Record an active → closed transition the way `transition()` would. */
+  function closeTicket(ticketId = TICKET) {
+    const store = getStore(S);
+    const ticket = store.tickets.find((t) => t.id === ticketId)!;
+    store.statusEvents.push({
+      id: `se-close-${ticketId}`,
+      ticketId,
+      actor: 'system',
+      fromStatus: ticket.status,
+      toStatus: 'closed',
+      timestamp: new Date().toISOString(),
+    });
+    ticket.status = 'closed';
+    ticket.resolvedAt ??= new Date().toISOString();
+  }
+
+  it('is an eligible end state, and one review follows the stored transition', async () => {
+    closeTicket();
+    expect(getStore(S).tickets.find((t) => t.id === TICKET)?.status).toBe('closed');
+
+    startAutomaticAiReview(S, TICKET);
+    await __settleAiReviewsForTest();
+
+    const reviews = aiReviews(TICKET);
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].ai?.trigger).toBe('automatic');
+    expect(reviews[0].ai?.status).toBe('succeeded');
+  });
+
+  it('does not duplicate the review when the trigger fires again', async () => {
+    closeTicket();
+    startAutomaticAiReview(S, TICKET);
+    await __settleAiReviewsForTest();
+    startAutomaticAiReview(S, TICKET);
+    startAutomaticAiReview(S, TICKET);
+    await __settleAiReviewsForTest();
+
+    expect(aiReviews(TICKET)).toHaveLength(1);
+  });
+
+  it('counts a close as its own resolution cycle, not a repeat of a resolve', async () => {
+    await resolveAndSettle();
+    expect(aiReviews(TICKET)).toHaveLength(1);
+
+    // resolved → closed is NOT a new cycle: it starts from an end state, so the
+    // handling was already finished and already graded.
+    closeTicket();
+    startAutomaticAiReview(S, TICKET);
+    await __settleAiReviewsForTest();
+
+    expect(aiReviews(TICKET)).toHaveLength(1);
+  });
+});
+
 describe('resolution survives an AI reviewer that cannot run', () => {
   it('resolves normally when the deployment switch is off, and records nothing', async () => {
     delete process.env.HEYQ_AI_REVIEW_ENABLED;
