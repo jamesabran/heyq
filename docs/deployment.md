@@ -5,7 +5,7 @@ HeyQ ships as **two independently deployed pieces** on **different domains**:
 | Piece | What | Host | Example URL |
 |---|---|---|---|
 | Frontend | Vite/React static build | Vercel | `https://heyq.vercel.app` |
-| API | Standalone Node mock API (`server/`) | Railway / Render (any Node host) | `https://heyq-api.up.railway.app` |
+| API | Standalone Node mock API (`server/`) | Railway / Render (any Node host) | `https://heyq-api-production.up.railway.app` |
 
 In local development a single Vite dev proxy forwards `/api` to the Node server,
 so both run same-origin. In production they are cross-origin: the frontend is
@@ -22,7 +22,7 @@ frontend origin via CORS.
 
 | Variable | Required | Value | Notes |
 |---|---|---|---|
-| `VITE_API_BASE_URL` | Yes (prod) | API origin, e.g. `https://heyq-api.up.railway.app` | **No** trailing slash, **no** `/api` suffix. Requests resolve to `${VITE_API_BASE_URL}/api/...`. Leave unset locally to use the dev proxy. |
+| `VITE_API_BASE_URL` | Yes (prod) | API origin, e.g. `https://heyq-api-production.up.railway.app` | **No** trailing slash, **no** `/api` suffix. Requests resolve to `${VITE_API_BASE_URL}/api/...`. Leave unset locally to use the dev proxy. |
 
 ### Backend (Node host — runtime)
 
@@ -84,7 +84,7 @@ production dependencies only.
 
 ## Required deployment order
 
-1. **Deploy the API first** and obtain its public origin (e.g. `https://heyq-api.up.railway.app`). Confirm `GET /health` returns `{ "ok": true }`.
+1. **Deploy the API first** and obtain its public origin (e.g. `https://heyq-api-production.up.railway.app`). Confirm `GET /health` returns `{ "ok": true }`.
 2. **Set `VITE_API_BASE_URL`** on Vercel to that origin, then **deploy the frontend** (or redeploy so the value is baked in).
 3. *(Optional)* If the frontend uses a domain other than `https://heyq.vercel.app`, set `HEYQ_FRONTEND_ORIGIN` on the API host to that origin and redeploy the API.
 
